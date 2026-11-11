@@ -265,6 +265,45 @@ pre#draft {
 #copyBtn { align-self: flex-start; }
 #aiBody { display: flex; flex-direction: column; gap: 12px; }
 
+/* ---- Example chips ---- */
+.examples { gap: 8px; }
+.examples .row { gap: 8px; }
+.chip.ex { background: var(--raised); border-color: transparent; }
+.chip.ex:hover { border-color: var(--accent); transform: translateY(-2px); }
+
+/* ---- Steppers ---- */
+.stepper { display: flex; align-items: stretch; gap: 4px; direction: ltr; }
+.stepper input { flex: 1; min-width: 0; -moz-appearance: textfield; appearance: textfield; }
+.stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.stepper button {
+  flex: none; width: 40px; display: grid; place-items: center; border-radius: 8px; cursor: pointer;
+  background: var(--raised); border: 1px solid var(--border); color: var(--text);
+  transition: background-color 300ms var(--curve), border-color 300ms var(--curve), transform 500ms var(--curve);
+}
+.stepper button:hover { border-color: var(--accent); }
+.stepper button:active { transform: scale(0.98); }
+.stepper input.bump { animation: bump 500ms var(--curve); }
+@keyframes bump { from { transform: scale(1.12); } to { transform: scale(1); } }
+
+/* ---- Share bars ---- */
+.bars { display: flex; flex-direction: column; gap: 12px; }
+.bar-row { display: grid; grid-template-columns: 112px 1fr 64px; align-items: center; gap: 12px; opacity: 0; transform: translateY(8px); transition: opacity 500ms var(--curve), transform 500ms var(--curve); }
+.bar-row.in { opacity: 1; transform: none; }
+.bar-row.me .bar-label { font-weight: 600; color: var(--accent); }
+.bar-track { height: 12px; border-radius: 9999px; background: var(--raised); overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 9999px; background: var(--muted); transform: scaleX(0); transform-origin: left center; transition: transform 800ms var(--curve); }
+[dir="rtl"] .bar-fill { transform-origin: right center; }
+.bar-row.me .bar-fill { background: var(--accent); }
+.bar-pct { text-align: end; }
+.mine.pop { animation: pop 500ms var(--curve); }
+@keyframes pop { from { transform: scale(0.96); opacity: 0.4; } to { transform: scale(1); opacity: 1; } }
+
+/* ---- Card hover ---- */
+.cards .card { transition: transform 500ms var(--curve), border-color 300ms var(--curve); }
+.cards .card:hover { transform: translateY(-4px); border-color: var(--accent); }
+.cards .card .icon { transition: transform 500ms var(--curve); }
+.cards .card:hover .icon { transform: scale(1.12); }
+
 /* ---- Loading skeleton ---- */
 .skeleton { display: flex; flex-direction: column; gap: 12px; }
 .skeleton .bar { height: 16px; border-radius: 8px; background: var(--raised); animation: pulse 1200ms var(--curve) infinite alternate; }
@@ -297,4 +336,8 @@ pre#draft {
   .tagline .w { opacity: 1; transition: none; }
   .skeleton .bar { animation: none; }
   .btn:active, .chip:active { transform: none; }
+  .bar-row { transform: none; }
+  .bar-fill { transition: none; }
+  .mine.pop, .stepper input.bump { animation: none; }
+  .cards .card:hover, .cards .card:hover .icon, .chip.ex:hover { transform: none; }
 }

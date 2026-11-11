@@ -62,6 +62,7 @@
         <h3 class="heading-6"><span class="step num">1</span><span data-i18n="s1Title"></span></h3>
         <p class="body-6 muted" data-i18n="s1Hint"></p>
         <textarea id="story" class="body-3" rows="3" data-i18n-ph="storyPh"></textarea>
+        <div class="row examples"><span class="caption-1 muted" data-i18n="tryExample"></span><span id="examples" class="row"></span></div>
         <div class="row">
           <button id="micBtn" type="button" class="btn ghost button-md"><i id="micIcon" class="ph ph-microphone" aria-hidden="true"></i><span id="micText" data-i18n="mic"></span></button>
           <button id="parseBtn" type="button" class="btn button-md"><i class="ph ph-magic-wand" aria-hidden="true"></i><span data-i18n="parse"></span></button>
@@ -120,6 +121,8 @@
       <div class="card" id="resultCard" hidden>
         <h3 class="heading-6"><span class="step num">3</span><span data-i18n="s3Title"></span></h3>
         <div id="mine" class="mine" hidden></div>
+        <p class="title-4 muted" data-i18n="barsTitle"></p>
+        <div id="bars" class="bars"></div>
         <div class="tablewrap">
           <table>
             <thead><tr class="caption-1"><th data-i18n="thHeir"></th><th data-i18n="thCount"></th><th data-i18n="thEach"></th><th data-i18n="thPct"></th><th data-i18n="thAmt"></th></tr></thead>

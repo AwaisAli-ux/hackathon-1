@@ -28,7 +28,9 @@ async function gemini(system, user, schema) {
   if (!key) throw new Error('GEMINI_API_KEY is not set');
   const order = workingModel ? [workingModel, ...MODELS.filter((m) => m !== workingModel)] : MODELS;
   let lastErr;
+  const deadline = Date.now() + 28000; // never keep the user waiting longer than this in total
   for (const model of order) {
+    if (Date.now() > deadline) break;
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST',
@@ -50,6 +52,7 @@ async function gemini(system, user, schema) {
       console.error(`${model}: ${err.message}`);
       lastErr = err;
       if (workingModel === model) workingModel = null;
+      if (err.message === 'fetch failed') break; // no internet: other models will fail too
     }
   }
   throw lastErr;

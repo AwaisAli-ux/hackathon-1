@@ -27,7 +27,22 @@ function applyLang() {
   $('calcError').hidden = true;
   if (!SR) $('micBtn').title = t('micUnsupported');
   buildTagline();
+  buildExamples();
   if (last) showResult();
+}
+
+// Example stories: one click fills the story and asks AI to fill the form.
+function buildExamples() {
+  const box = $('examples');
+  box.replaceChildren();
+  for (const ex of t('examples')) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip ex button-sm';
+    b.textContent = ex.label;
+    b.addEventListener('click', () => { $('story').value = ex.story; $('parseBtn').click(); });
+    box.append(b);
+  }
 }
 
 $('langBtn').addEventListener('click', () => {
@@ -193,12 +208,49 @@ function readForm() {
 
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 
+// Plus and minus buttons around each count field.
+for (const id of ['wives', 'sons', 'daughters', 'brothers', 'sisters']) {
+  const input = $(id);
+  const wrap = el('div', 'stepper');
+  const make = (icon, delta, labelKey) => {
+    const b = el('button');
+    b.type = 'button';
+    b.dataset.i18nAria = labelKey;
+    b.append(el('i', `ph ph-${icon}`));
+    b.addEventListener('click', (e) => {
+      e.preventDefault();
+      const max = input.max ? Number(input.max) : 99;
+      input.value = Math.min(max, Math.max(0, (Number(input.value) || 0) + delta));
+      input.classList.remove('bump');
+      void input.offsetWidth; // restart the animation
+      input.classList.add('bump');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    return b;
+  };
+  input.replaceWith(wrap);
+  wrap.append(make('minus', -1, 'less'), input, make('plus', 1, 'more'));
+}
+
 $('calcBtn').addEventListener('click', () => {
   last = { input: readForm(), relation: $('relation').value };
-  if (showResult()) $('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (showResult()) {
+    $('mine').classList.remove('pop');
+    void $('mine').offsetWidth;
+    $('mine').classList.add('pop');
+    $('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 });
 
-function showResult() {
+// After the first calculation, the result follows the form live.
+$('calcBtn').closest('.card').addEventListener('input', () => {
+  if (!last) return;
+  last = { input: readForm(), relation: $('relation').value };
+  showResult(true);
+});
+
+let explainTimer = null;
+function showResult(live = false) {
   const result = calculate(last.input, lang);
   $('calcError').hidden = result.ok;
   if (!result.ok) {
@@ -225,6 +277,31 @@ function showResult() {
   }
   mine.hidden = !mineRow;
 
+  // Animated bars: one per heir group, reused between updates so they glide to the new size.
+  const bars = $('bars');
+  const seen = new Set();
+  for (const r of result.rows) {
+    seen.add(r.key);
+    let row = bars.querySelector(`[data-key="${r.key}"]`);
+    if (!row) {
+      row = el('div', 'bar-row');
+      row.dataset.key = r.key;
+      const track = el('div', 'bar-track');
+      track.append(el('div', 'bar-fill'));
+      row.append(el('span', 'bar-label body-5'), track, el('span', 'bar-pct num caption-1'));
+    }
+    bars.append(row);
+    row.classList.toggle('me', r.key === mineKey);
+    row.children[0].textContent = r.count > 1 ? `${r.label} (${r.count})` : r.label;
+    row.children[2].textContent = Math.round((r.total.n / r.total.d) * 10000) / 100 + '%';
+    const fill = row.querySelector('.bar-fill');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      row.classList.add('in');
+      fill.style.transform = `scaleX(${r.total.n / r.total.d})`;
+    }));
+  }
+  bars.querySelectorAll('.bar-row').forEach((x) => { if (!seen.has(x.dataset.key)) x.remove(); });
+
   // Table and reasons
   const tbody = $('rows'); tbody.replaceChildren();
   const reasons = $('reasons'); reasons.replaceChildren();
@@ -250,7 +327,17 @@ function showResult() {
   $('flagNote').hidden = notes.length === 0;
 
   $('resultCard').hidden = false;
-  explain(result, relation, mineRow);
+  clearTimeout(explainTimer);
+  if (live) {
+    // Wait until the user stops changing the form before asking AI again.
+    explainRun++;
+    $('aiCard').hidden = false;
+    $('aiBody').hidden = true;
+    $('aiLoading').hidden = false;
+    explainTimer = setTimeout(() => explain(result, relation, mineRow), 1200);
+  } else {
+    explain(result, relation, mineRow);
+  }
   return true;
 }
 
