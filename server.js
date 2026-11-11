@@ -13,8 +13,8 @@ const PUBLIC = path.join(ROOT, 'public');
 const envFile = path.join(ROOT, '.env');
 if (existsSync(envFile)) {
   for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '').trim();
   }
 }
 
@@ -25,34 +25,29 @@ const MODELS = [process.env.GEMINI_MODEL, 'gemini-3.5-flash-lite', 'gemini-flash
 let workingModel = null;
 const coolUntil = new Map(); // model -> time before which we skip it after a failure
 
-async function gemini(system, user, schema, prefer = []) {
+// One Gemini call with fallback across models. `build(model)` returns the request body.
+// Returns the raw response JSON of the first model that answers in time.
+async function callGemini(order, body, { perModel = 12000, total = 28000, remember = false, check } = {}) {
   const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error('GEMINI_API_KEY is not set');
-  const base = workingModel ? [workingModel, ...MODELS.filter((m) => m !== workingModel)] : MODELS;
-  const all = [...prefer, ...base.filter((m) => !prefer.includes(m))];
-  const fresh = all.filter((m) => (coolUntil.get(m) || 0) < Date.now());
-  const order = fresh.length ? fresh : all;
+  if (!key) throw Object.assign(new Error('GEMINI_API_KEY is not set'), { status: 503 });
+  const fresh = order.filter((m) => (coolUntil.get(m) || 0) < Date.now());
+  const list = fresh.length ? fresh : order;
   let lastErr;
-  const deadline = Date.now() + 28000; // never keep the user waiting longer than this in total
-  for (const model of order) {
+  const deadline = Date.now() + total; // never keep the user waiting longer than this in total
+  for (const model of list) {
     if (Date.now() > deadline) break;
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          contents: [{ role: 'user', parts: [{ text: user }] }],
-          generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: schema },
-        }),
-        signal: AbortSignal.timeout(12000),
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(Math.min(perModel, Math.max(1000, deadline - Date.now()))),
       });
       if (!res.ok) throw new Error(`Gemini ${res.status} (${model}): ${(await res.text()).slice(0, 300)}`);
       const data = await res.json();
-      const text = (data.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
-      const parsed = JSON.parse(text);
-      if (!prefer.includes(model)) workingModel = model;
-      return parsed;
+      const out = check ? check(data) : data;
+      if (remember) workingModel = model;
+      return out;
     } catch (err) {
       console.error(`${model}: ${err.message}`);
       lastErr = err;
@@ -64,10 +59,85 @@ async function gemini(system, user, schema, prefer = []) {
   throw lastErr;
 }
 
+const textOf = (data) => (data.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
+const jsonOf = (data) => JSON.parse(textOf(data));
+
+// JSON answer from text (and optionally an image or audio part).
+async function gemini(system, user, schema, prefer = [], media = null) {
+  const base = workingModel ? [workingModel, ...MODELS.filter((m) => m !== workingModel)] : MODELS;
+  const order = [...prefer, ...base.filter((m) => !prefer.includes(m))];
+  const parts = [];
+  if (media) parts.push({ inlineData: { mimeType: media.mime, data: media.data } });
+  parts.push({ text: user });
+  return callGemini(order, {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: 'user', parts }],
+    generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: schema },
+  }, { remember: !prefer.length, check: jsonOf, perModel: media ? 25000 : 12000, total: media ? 45000 : 28000 });
+}
+
+// ---- Voice: speech to text (Gemini audio understanding) ----
+const TRANSCRIBE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    language: { type: 'STRING', enum: ['urdu', 'english', 'roman_urdu'] },
+    transcript: { type: 'STRING', description: 'Urdu in Perso-Arabic script (اردو), or English' },
+  },
+  required: ['language', 'transcript'],
+};
+const DEVANAGARI = /[ऀ-ॿ]/;
+async function transcribe(audio, lang) {
+  const ask = lang === 'ro'
+    ? 'Transcribe this voice note from Pakistan. Write it in Roman Urdu (Urdu in Latin letters, for example "mere walid ka inteqal ho gaya"). If the speech is English, write English.'
+    : 'Transcribe this voice note. The speaker is from Pakistan and speaks Urdu. Write the transcript in Urdu script (Perso-Arabic letters like میرے والد), not Devanagari and not Roman letters. If the speech is English, write English.';
+  const order = ['gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-3.5-flash-lite'];
+  const out = await callGemini(order, {
+    contents: [{ role: 'user', parts: [{ inlineData: { mimeType: audio.mime, data: audio.data } }, { text: ask }] }],
+    generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: TRANSCRIBE_SCHEMA },
+  }, { check: jsonOf, perModel: 25000, total: 45000 });
+  let text = String(out.transcript || '').trim();
+  if (DEVANAGARI.test(text)) {
+    // Some models write spoken Urdu in Hindi letters; convert it to Urdu script with a text only call.
+    const fix = await gemini('Rewrite the given Urdu text, which is written in Devanagari letters, in Urdu script (Perso-Arabic letters). Keep the words and numbers exactly. Return JSON {"text": "..."}.',
+      text, { type: 'OBJECT', properties: { text: { type: 'STRING' } }, required: ['text'] });
+    text = String(fix.text || text).trim();
+  }
+  return { text, language: out.language };
+}
+
+// ---- Voice: text to speech (Gemini TTS). Returns WAV bytes. ----
+const TTS_MODELS = ['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts', 'gemini-3.1-flash-tts-preview'];
+function pcmToWav(pcm, rate = 24000) {
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVE', 8);
+  h.write('fmt ', 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(rate, 24); h.writeUInt32LE(rate * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34);
+  h.write('data', 36); h.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([h, pcm]);
+}
+async function speak(text, lang) {
+  const style = lang === 'en' ? 'Read this in a calm, warm, clear voice:' : 'Read this in Urdu in a calm, warm, clear voice, at a gentle pace:';
+  const part = await callGemini(TTS_MODELS, {
+    contents: [{ role: 'user', parts: [{ text: `${style}\n${text}` }] }],
+    generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } } },
+  }, {
+    perModel: 40000, total: 60000,
+    check: (data) => {
+      const p = (data.candidates?.[0]?.content?.parts || []).find((x) => x.inlineData);
+      if (!p) throw new Error('no audio in reply');
+      return p.inlineData;
+    },
+  });
+  const bytes = Buffer.from(part.data, 'base64');
+  if (bytes.subarray(0, 4).toString() === 'RIFF') return bytes;
+  const rate = Number((/rate=(\d+)/.exec(part.mimeType || '') || [])[1]) || 24000;
+  return pcmToWav(bytes, rate);
+}
+
 // Story parsing. Gemini only names each person with a standard kinship word.
 // Working out who that person is to the deceased, the counting, and the
 // "out of scope" decision are all done by code in peopleToForm().
-const PARSE_SYSTEM = `You read a short story about an inheritance. The text is Urdu, Roman Urdu or English. A person (usually a woman heir) describes a relative who has died and the family left behind.
+const PARSE_SYSTEM = `You read a short story about an inheritance. The text is Urdu, Roman Urdu or English. It may also come as a photo of a handwritten note, a family list or a document: then read the text in the photo and use only what is written there. A person (usually a woman heir) describes a relative who has died and the family left behind.
 
 Your job is only to LIST the people mentioned, using standard kinship words. Do not work out inheritance. Do not decide who is an heir.
 
@@ -99,7 +169,11 @@ Fields:
   * count: how many.
   * includesSpeaker: true if the speaker is one of the people in this entry.
   * alive: false only if the text says this person has died.
-- estate: total value in Pakistani rupees as a plain number (1 lakh = 100000, 1 crore = 10000000; "1 crore 20 lakh" = 12000000); null if not given.
+- estate: total value in Pakistani rupees as a plain number (1 lakh = 100000, 1 crore = 10000000; "1 crore 20 lakh" = 12000000); null if not given. If only separate parts are given, estate is their sum.
+- cash, gold, house: the rupee value of each part when the story gives it separately (cash or bank money; gold or jewellery; house, plot, land or other property). null if that part is not given with a value. Never guess a value.
+- goldTola: the weight of the gold in tola if the story gives it; null otherwise.
+- funeral, debts, will: rupee amounts for funeral costs, debts (qarz) owed by the deceased, and a will (wasiyat) the deceased made, if the story gives them; null otherwise.
+- sourceText: only for a photo, the relevant lines you read from it, short, in the original language; otherwise null.
 
 Rules:
 - The speaker appears in EXACTLY ONE entry, with includesSpeaker true. Never add a second entry for the speaker.
@@ -120,7 +194,7 @@ const TERMS = ['self', 'father', 'mother', 'husband', 'wife', 'son', 'daughter',
 
 const PARSE_SCHEMA = {
   type: 'OBJECT',
-  propertyOrdering: ['deceasedIsSpeakers', 'speakerGender', 'people', 'estate'],
+  propertyOrdering: ['deceasedIsSpeakers', 'speakerGender', 'people', 'estate', 'cash', 'gold', 'goldTola', 'house', 'funeral', 'debts', 'will', 'sourceText'],
   properties: {
     deceasedIsSpeakers: { type: 'STRING', enum: ['father', 'mother', 'husband', 'wife', 'brother', 'sister', 'son', 'daughter', 'other'] },
     speakerGender: { type: 'STRING', enum: ['female', 'male'] },
@@ -141,6 +215,14 @@ const PARSE_SCHEMA = {
       },
     },
     estate: { type: 'NUMBER', nullable: true },
+    cash: { type: 'NUMBER', nullable: true },
+    gold: { type: 'NUMBER', nullable: true },
+    goldTola: { type: 'NUMBER', nullable: true },
+    house: { type: 'NUMBER', nullable: true },
+    funeral: { type: 'NUMBER', nullable: true },
+    debts: { type: 'NUMBER', nullable: true },
+    will: { type: 'NUMBER', nullable: true },
+    sourceText: { type: 'STRING', nullable: true },
   },
   required: ['deceasedIsSpeakers', 'speakerGender', 'people'],
 };
@@ -171,6 +253,15 @@ const FROM_SPEAKER = {
 const FROM_DECEASED = { father: 'father', mother: 'mother', husband: 'husband', wife: 'wife',
   son: 'son', daughter: 'daughter', brother: 'full_brother', sister: 'full_sister' };
 const GENDER_OF = { father: 'male', husband: 'male', brother: 'male', son: 'male', mother: 'female', wife: 'female', sister: 'female', daughter: 'female' };
+
+// Cash, gold and house values from the story. The estate is never smaller than their sum.
+function assetsFrom(parsed) {
+  const pos = (v) => (Number(v) > 0 ? Number(v) : null);
+  const cash = pos(parsed.cash), gold = pos(parsed.gold), house = pos(parsed.house);
+  const parts = (cash || 0) + (gold || 0) + (house || 0);
+  const estate = Math.max(pos(parsed.estate) || 0, parts) || null;
+  return { estate, cash, gold, goldTola: pos(parsed.goldTola), house, funeral: pos(parsed.funeral), debts: pos(parsed.debts), will: pos(parsed.will) };
+}
 
 function peopleToForm(parsed, lang) {
   const died = parsed.deceasedIsSpeakers;
@@ -212,9 +303,9 @@ function peopleToForm(parsed, lang) {
   }
 
   const deceasedGender = GENDER_OF[died] || (count.husband > 0 ? 'female' : 'male');
-  const names = outside.join(lang === 'en' ? ', ' : '، ');
+  const names = outside.join(lang === 'ur' ? '، ' : ', ');
   const outOfScope = outside.length
-    ? (lang === 'en' ? `${names} cannot be counted here.` : `${names} اس حساب میں شامل نہیں۔`)
+    ? (lang === 'en' ? `${names} cannot be counted here.` : lang === 'ro' ? `${names} is hisaab mein shamil nahin.` : `${names} اس حساب میں شامل نہیں۔`)
     : '';
   return {
     deceasedGender,
@@ -226,21 +317,22 @@ function peopleToForm(parsed, lang) {
     mother: count.mother > 0,
     brothers: count.full_brother,
     sisters: count.full_sister,
-    estate: Number(parsed.estate) > 0 ? Number(parsed.estate) : null,
+    ...assetsFrom(parsed),
     userRelation,
     outOfScope,
+    sourceText: parsed.sourceText || '',
   };
 }
 
 const EXPLAIN_SYSTEM = `You are Wirasat Saathi, a helper that explains an inheritance calculation to a woman in Pakistan in simple, warm, respectful language.
-Write everything in the language named in "outputLanguage" in the JSON: Urdu means Urdu script, English means plain English.
+Write everything in the language named in "outputLanguage" in the JSON: Urdu means Urdu script, English means plain English, Roman Urdu means simple Urdu written in Latin letters (for example "aap ka hissa").
 You receive JSON with shares that were already calculated by verified code under Sunni Hanafi rules.
 Hard rules:
 - NEVER calculate, change, round or add any share, fraction, percentage or amount. Use only the numbers given in the JSON, exactly as given.
 - Do not give a fatwa or a legal ruling. This is guidance only.
 - Simple everyday words, short sentences, no difficult legal or Arabic terms without a plain explanation.
 Write:
-- explanation: 4 to 6 sentences addressed to the user. State her own share first (userRelation tells you which row is hers), then briefly why, then who else gets what.
+- explanation: 4 to 6 sentences addressed to the user. State her own share first (userRelation tells you which row is hers), then briefly why, then who else gets what. If "beforeDivision" is given, say in one sentence that funeral costs, debts and the will were taken out first, using its numbers. If "assetsEachRupees" is given you may name her amount of cash, gold or house from it. If "keepingAsset" is given, say in one sentence what the keeper must pay her, using its numbers.
 - steps: 5 short practical next steps for claiming her share. You may draw on these general points, and tell her to confirm details with the relevant office:
   * Funeral costs, debts and any valid will (up to one third) are settled before the estate is divided.
   * Collect the death certificate and the family registration record of the heirs.
@@ -262,7 +354,7 @@ const EXPLAIN_SCHEMA = {
 };
 
 const ASK_SYSTEM = `You are Wirasat Saathi. A woman in Pakistan has just seen her inheritance share, which verified code calculated under Sunni Hanafi rules. The JSON gives her question, the calculated case, and outputLanguage.
-Answer her question in the output language (Urdu means Urdu script), in 3 to 5 short sentences and plain everyday words.
+Answer her question in the output language (Urdu means Urdu script; Roman Urdu means Urdu in Latin letters), in 3 to 5 short sentences and plain everyday words.
 Hard rules:
 - Use only the shares and amounts in the case. NEVER calculate, change or add a share, fraction, percentage or amount.
 - Give general practical guidance only. This is not a fatwa and not legal advice; for any decision tell her to confirm with a scholar, a lawyer or the relevant office.
@@ -279,55 +371,82 @@ General points you may draw on:
 
 const ASK_SCHEMA = { type: 'OBJECT', properties: { answer: { type: 'STRING' } }, required: ['answer'] };
 
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
+const TYPES = { '.wav': 'audio/wav', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
 const send = (res, status, body) => {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 };
 
-const readBody = (req) => new Promise((resolve, reject) => {
+const readBody = (req, limit = 100000) => new Promise((resolve, reject) => {
   let data = '';
-  req.on('data', (c) => { data += c; if (data.length > 100000) reject(new Error('body too large')); });
-  req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch (e) { reject(e); } });
-  req.on('error', reject);
+  let done = false;
+  const fail = (status, msg) => { if (!done) { done = true; const e = new Error(msg); e.status = status; reject(e); } };
+  req.on('data', (c) => { data += c; if (data.length > limit) { fail(413, 'body too large'); req.destroy(); } });
+  req.on('end', () => {
+    if (done) return;
+    try { const v = JSON.parse(data || '{}'); done = true; resolve(v && typeof v === 'object' ? v : {}); }
+    catch { fail(400, 'invalid JSON'); }
+  });
+  req.on('error', (e) => fail(400, e.message));
 });
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     if (req.method === 'POST' && url.pathname === '/api/parse') {
-      const { text, lang } = await readBody(req);
-      if (!text || !String(text).trim()) return send(res, 400, { error: 'text is required' });
+      const { text, lang, image } = await readBody(req, 8_000_000);
+      const img = image && typeof image.data === 'string' && /^image\/(png|jpeg|webp|heic|heif)$/.test(image.mime) ? image : null;
+      if (!img && (!text || !String(text).trim())) return send(res, 400, { error: 'text or image is required' });
+      const L = ['en', 'ro'].includes(lang) ? lang : 'ur';
       // Reading family relations is the hardest step, so the more careful models go first here.
-      const parsed = await gemini(PARSE_SYSTEM, String(text).slice(0, 4000), PARSE_SCHEMA, ['gemini-3.1-flash-lite', 'gemini-3.5-flash']);
-      return send(res, 200, peopleToForm(parsed, lang === 'en' ? 'en' : 'ur'));
+      const user = img ? `Read the family details in this photo.${text ? ' Extra note from the user: ' + String(text).slice(0, 1000) : ''}` : String(text).slice(0, 4000);
+      const parsed = await gemini(PARSE_SYSTEM, user, PARSE_SCHEMA, img ? ['gemini-3.5-flash', 'gemini-flash-latest'] : ['gemini-3.1-flash-lite', 'gemini-3.5-flash'], img);
+      return send(res, 200, peopleToForm(parsed, L));
+    }
+    if (req.method === 'POST' && url.pathname === '/api/transcribe') {
+      const { audio, lang } = await readBody(req, 8_000_000);
+      if (!audio || typeof audio.data !== 'string' || !/^audio\//.test(audio.mime || '')) return send(res, 400, { error: 'audio is required' });
+      return send(res, 200, await transcribe(audio, lang));
+    }
+    if (req.method === 'POST' && url.pathname === '/api/speak') {
+      const { text, lang } = await readBody(req);
+      const say = String(text || '').trim().slice(0, 1500);
+      if (!say) return send(res, 400, { error: 'text is required' });
+      const wav = await speak(say, lang);
+      res.writeHead(200, { 'content-type': 'audio/wav', 'content-length': wav.length });
+      return res.end(wav);
     }
     if (req.method === 'POST' && url.pathname === '/api/explain') {
       const body = await readBody(req);
-      return send(res, 200, await gemini(EXPLAIN_SYSTEM, JSON.stringify(body).slice(0, 8000), EXPLAIN_SCHEMA));
+      return send(res, 200, await gemini(EXPLAIN_SYSTEM, JSON.stringify(body).slice(0, 12000), EXPLAIN_SCHEMA));
     }
     if (req.method === 'POST' && url.pathname === '/api/ask') {
       const body = await readBody(req);
       const question = String(body.question || '').trim().slice(0, 300);
       if (!question) return send(res, 400, { error: 'question is required' });
-      const user = JSON.stringify({ question, outputLanguage: body.outputLanguage === 'English' ? 'English' : 'Urdu', case: body.case }).slice(0, 8000);
+      const outputLanguage = ['English', 'Roman Urdu'].includes(body.outputLanguage) ? body.outputLanguage : 'Urdu';
+      const user = JSON.stringify({ question, outputLanguage, case: body.case }).slice(0, 12000);
       return send(res, 200, await gemini(ASK_SYSTEM, user, ASK_SCHEMA));
     }
     if (req.method === 'GET' && url.pathname === '/api/health') {
       return send(res, 200, { ok: true, ai: !!process.env.GEMINI_API_KEY, model: workingModel });
     }
     if (req.method !== 'GET') return send(res, 405, { error: 'method not allowed' });
-    const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '');
+    let rel;
+    try { rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, ''); }
+    catch { return send(res, 400, { error: 'bad path' }); }
     const file = path.resolve(PUBLIC, rel);
     if (!file.startsWith(PUBLIC + path.sep)) return send(res, 403, { error: 'forbidden' });
     const data = await readFile(file);
     res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
     res.end(data);
   } catch (err) {
-    if (err.code === 'ENOENT') return send(res, 404, { error: 'not found' });
+    if (err.code === 'ENOENT' || err.code === 'EISDIR') return send(res, 404, { error: 'not found' });
+    if (res.headersSent) return res.end();
     console.error(err.message);
-    send(res, 502, { error: err.message });
+    // Client mistakes get their own status; anything else is an upstream (Gemini) failure.
+    send(res, err.status || 502, { error: err.message });
   }
 });
 

@@ -86,6 +86,38 @@ const TEXT = {
     nothingLeft: 'In this case nothing is left after the fixed shares.',
     noHeir: 'Enter at least one heir.',
   },
+  ro: {
+    husband: 'Shohar', wife: 'Biwi', wives: 'Biwiyan', mother: 'Walida', father: 'Walid',
+    son: 'Beta', sons: 'Betay', daughter: 'Beti', daughters: 'Betiyan',
+    brother: 'Saga bhai', brothers: 'Sagay bhai', sister: 'Sagi behen', sisters: 'Sagi behnein',
+    hChild: 'Aulaad maujood hai, is liye shohar ka hissa 1/4 hai.',
+    hNoChild: 'Aulaad nahin hai, is liye shohar ka hissa 1/2 hai.',
+    wChild: 'Aulaad maujood hai, is liye biwi ka hissa 1/8 hai.',
+    wNoChild: 'Aulaad nahin hai, is liye biwi ka hissa 1/4 hai.',
+    wEqual: ' Yeh hissa sab biwiyon mein barabar taqseem hota hai.',
+    mChild: 'Aulaad maujood hai, is liye walida ka hissa 1/6 hai.',
+    mSibs: 'Do ya zyada behen bhai maujood hain, is liye walida ka hissa 1/6 hai.',
+    mUmar: 'Shohar ya biwi aur walid dono maujood hain, is liye walida ko shohar ya biwi ka hissa nikalne ke baad baqi ka 1/3 milta hai.',
+    mThird: 'Aulaad nahin aur behen bhai do se kam hain, is liye walida ka hissa 1/3 hai.',
+    cResid: 'Muqarrara hissay dene ke baad jo bachta hai woh aulaad ko milta hai.',
+    dWithSon: 'Betay ke saath beti baqi tarke mein shareek hoti hai: har beti ko betay ke hissay ka aadha milta hai.',
+    dOne: 'Beta nahin hai aur aik hi beti hai, is liye us ka hissa 1/2 hai.',
+    dMany: 'Beta nahin hai aur do ya zyada betiyan hain, is liye sab betiyon ka mushtarka hissa 2/3 hai.',
+    fSon: 'Beta maujood hai, is liye walid ka hissa 1/6 hai.',
+    fDaughters: 'Sirf betiyan hain, is liye walid ko 1/6 aur muqarrara hisson ke baad jo bache woh bhi milta hai.',
+    fResid: 'Aulaad nahin hai, is liye walid ko muqarrara hisson ke baad baqi sab milta hai.',
+    sibSon: 'Betay ki maujoodgi mein behen bhaiyon ko hissa nahin milta.',
+    sibFather: 'Walid ki maujoodgi mein behen bhaiyon ko hissa nahin milta.',
+    bResid: 'Beta aur walid nahin hain, is liye muqarrara hisson ke baad jo bache woh behen bhaiyon ko milta hai.',
+    sWithBrother: 'Bhai ke saath behen ko bhai ke hissay ka aadha milta hai.',
+    sWithDaughters: 'Betiyon ke saath behnein muqarrara hisson ke baad bacha hua hissa leti hain.',
+    sOne: 'Aulaad, walid aur bhai nahin hain aur aik hi behen hai, is liye us ka hissa 1/2 hai.',
+    sMany: 'Aulaad, walid aur bhai nahin hain aur do ya zyada behnein hain, is liye un ka mushtarka hissa 2/3 hai.',
+    awl: 'Muqarrara hisson ka majmooa tarke se zyada tha, is liye sab ke hissay usi tanasub se kam kiye gaye (awl).',
+    radd: 'Baqi bacha hua hissa lene wala koi aur waris nahin, is liye woh inhi warison ko un ke hisson ke tanasub se wapas mila (radd).',
+    nothingLeft: 'Is soorat mein muqarrara hisson ke baad kuch nahin bacha.',
+    noHeir: 'Kam az kam aik waris darj karein.',
+  },
 };
 
 export function calculate(raw = {}, lang = 'ur') {
@@ -259,4 +291,107 @@ export function calculate(raw = {}, lang = 'ur') {
     unallocated,
     estate,
   };
+}
+
+// ---- Asset split ----
+// Splits each listed asset (cash, gold, house, others) between the heirs using the shares
+// calculate() produced, and adds a total for every heir and for the whole estate.
+// Amounts are worked out from the exact fraction and rounded to the nearest rupee only at the end.
+// Gold can also be given in tola; then the share of gold is shown in tola as well.
+export const ASSET_KINDS = ['cash', 'gold', 'house', 'other'];
+
+// ---- Before division: funeral costs, then debts, then the will (at most one third of what is left) ----
+// Order and the one third limit follow the general rule; a will in favour of an heir needs the other heirs' consent,
+// so the app tells the user it must not be for an heir.
+export function deductions(gross, { funeral = 0, debts = 0, will = 0 } = {}) {
+  const pos = (v) => Math.max(0, Number(v) || 0);
+  const g = pos(gross);
+  const f = Math.min(pos(funeral), g);
+  const afterFuneral = g - f;
+  const d = Math.min(pos(debts), afterFuneral);
+  const afterDebts = afterFuneral - d;
+  const maxWill = afterDebts / 3;
+  const asked = pos(will);
+  const w = Math.min(asked, maxWill);
+  return {
+    gross: g,
+    funeral: f,
+    debts: d,
+    will: w,
+    willAsked: asked,
+    willCapped: asked > maxWill + 1e-9,
+    maxWill,
+    net: afterDebts - w,
+    insolvent: g > 0 && afterDebts <= 0,
+    debtsUnpaid: Math.max(0, pos(debts) - d),
+    any: f + d + w > 0,
+  };
+}
+
+// ---- Keeping an asset: one heir group keeps it (for example the brothers keep the house) and pays the others ----
+export function buyout(result, value, keeperKey) {
+  if (!result || !result.ok) return null;
+  const V = Math.max(0, Number(value) || 0);
+  const keeper = result.rows.find((r) => r.key === keeperKey);
+  if (!V || !keeper) return null;
+  const own = V * fnum(keeper.total);
+  const pays = V - own;
+  return {
+    value: V,
+    keeper: {
+      key: keeper.key, label: keeper.label, count: keeper.count,
+      ownShare: Math.round(own), pays: Math.round(pays), paysEach: Math.round(pays / keeper.count),
+    },
+    others: result.rows.filter((r) => r.key !== keeperKey).map((r) => ({
+      key: r.key, label: r.label, count: r.count, blocked: r.blocked,
+      receivesEach: Math.round(V * fnum(r.each)),
+      receivesGroup: Math.round(V * fnum(r.total)),
+    })),
+    unallocated: result.unallocated && result.unallocated.n > 0 ? Math.round(V * fnum(result.unallocated)) : 0,
+  };
+}
+
+export function splitAssets(result, assets = [], net = null) {
+  if (!result || !result.ok) return null;
+  const list = (assets || [])
+    .map((a) => ({
+      kind: ASSET_KINDS.includes(a.kind) ? a.kind : 'other',
+      name: String(a.name || '').trim(),
+      value: Math.max(0, Number(a.value) || 0),
+      tola: Math.max(0, Number(a.tola) || 0) || null,
+    }))
+    .filter((a) => a.value > 0);
+  if (!list.length) return null;
+
+  const gross = list.reduce((s, a) => s + a.value, 0);
+  // After deductions every asset is reduced in the same proportion.
+  const factor = net != null && gross > 0 ? Math.max(0, Math.min(1, Number(net) / gross)) : 1;
+  for (const a of list) { a.gross = a.value; a.value = a.value * factor; if (a.tola) a.tola = Math.round(a.tola * factor * 1000) / 1000; }
+  const estate = gross * factor;
+  const round = (x) => Math.round(x);
+  const tolaOf = (t, f) => Math.round(t * fnum(f) * 1000) / 1000;
+
+  const rows = result.rows.map((r) => ({
+    key: r.key,
+    label: r.label,
+    count: r.count,
+    each: r.each,
+    blocked: r.blocked,
+    perAsset: list.map((a) => ({
+      each: round(a.value * fnum(r.each)),
+      group: round(a.value * fnum(r.total)),
+      tolaEach: a.tola ? tolaOf(a.tola, r.each) : null,
+    })),
+    totalEach: round(estate * fnum(r.each)),
+    totalGroup: round(estate * fnum(r.total)),
+  }));
+
+  const unallocated = result.unallocated && result.unallocated.n > 0
+    ? {
+      perAsset: list.map((a) => round(a.value * fnum(result.unallocated))),
+      total: round(estate * fnum(result.unallocated)),
+    }
+    : null;
+
+  return { assets: list, rows, unallocated, estate: round(estate), gross, factor };
 }

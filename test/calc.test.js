@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculate, fstr, fr } from '../public/calc.js';
+import { calculate, splitAssets, deductions, buyout, fstr, fr } from '../public/calc.js';
 
 const shares = (input) => {
   const r = calculate(input);
@@ -91,4 +91,73 @@ test('amounts follow the estate', () => {
 
 test('no heirs is an error', () => {
   assert.equal(calculate({}).ok, false);
+});
+
+test('cash, gold and house are split separately with totals', () => {
+  const r = calculate({ deceasedGender: 'male', wives: 1, sons: 2, daughters: 1 });
+  const s = splitAssets(r, [
+    { kind: 'cash', value: 1000000 },
+    { kind: 'gold', value: 2000000, tola: 10 },
+    { kind: 'house', value: 1000000 },
+  ]);
+  assert.equal(s.estate, 4000000);
+  const d = s.rows.find((x) => x.key === 'daughters');
+  assert.deepEqual(d.perAsset.map((a) => a.each), [175000, 350000, 175000]);
+  assert.equal(d.perAsset[1].tolaEach, 1.75);
+  assert.equal(d.totalEach, 700000);
+  const sons = s.rows.find((x) => x.key === 'sons');
+  assert.deepEqual(sons.perAsset.map((a) => a.each), [350000, 700000, 350000]);
+  assert.equal(sons.totalEach, 1400000);
+  // Every asset is fully divided.
+  s.assets.forEach((a, i) => {
+    assert.equal(s.rows.reduce((sum, x) => sum + x.perAsset[i].group, 0), a.value);
+  });
+});
+
+test('asset split keeps the unallocated part visible', () => {
+  const r = calculate({ deceasedGender: 'male', wives: 1 });
+  const s = splitAssets(r, [{ kind: 'cash', value: 800000 }, { kind: 'house', value: 0 }]);
+  assert.equal(s.assets.length, 1);
+  assert.equal(s.rows[0].totalEach, 200000);
+  assert.equal(s.unallocated.total, 600000);
+});
+
+test('no assets gives no split', () => {
+  assert.equal(splitAssets(calculate({ deceasedGender: 'male', sons: 1 }), []), null);
+});
+
+test('funeral, debts, then will capped at one third', () => {
+  const d = deductions(1000000, { funeral: 100000, debts: 300000, will: 500000 });
+  assert.equal(d.funeral, 100000);
+  assert.equal(d.debts, 300000);
+  assert.equal(d.will, 200000); // one third of 600000
+  assert.equal(d.willCapped, true);
+  assert.equal(d.net, 400000);
+});
+
+test('debts larger than the estate leave nothing to divide', () => {
+  const d = deductions(500000, { debts: 800000 });
+  assert.equal(d.net, 0);
+  assert.equal(d.insolvent, true);
+  assert.equal(d.debtsUnpaid, 300000);
+});
+
+test('assets are reduced in proportion after deductions', () => {
+  const r = calculate({ deceasedGender: 'male', wives: 1, sons: 2, daughters: 1 });
+  const s = splitAssets(r, [{ kind: 'cash', value: 1000000 }, { kind: 'house', value: 3000000, }], 3000000);
+  assert.equal(s.gross, 4000000);
+  assert.equal(s.estate, 3000000);
+  const d = s.rows.find((x) => x.key === 'daughters');
+  assert.deepEqual(d.perAsset.map((a) => a.each), [131250, 393750]);
+  assert.equal(d.totalEach, 525000);
+});
+
+test('brothers keep the house and pay the sister her share', () => {
+  const r = calculate({ deceasedGender: 'male', mother: true, sons: 2, daughters: 1 });
+  const b = buyout(r, 5000000, 'sons');
+  // mother 1/6; rest 5/6 split 2:2:1, so each son 1/3 and the daughter 1/6
+  assert.equal(b.keeper.ownShare, 3333333);
+  assert.equal(b.keeper.pays, 1666667);
+  assert.equal(b.others.find((x) => x.key === 'daughters').receivesEach, 833333);
+  assert.equal(b.others.find((x) => x.key === 'mother').receivesEach, 833333);
 });

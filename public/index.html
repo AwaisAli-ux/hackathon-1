@@ -14,7 +14,8 @@
     (function () {
       var d = document.documentElement, lang = 'ur', theme = null;
       try { lang = localStorage.getItem('ws-lang') || 'ur'; theme = localStorage.getItem('ws-theme'); } catch (e) {}
-      d.lang = lang; d.dir = lang === 'ur' ? 'rtl' : 'ltr';
+      if (['en', 'ur', 'ro'].indexOf(lang) < 0) lang = 'ur';
+      d.lang = lang === 'ro' ? 'ur-Latn' : lang; d.dir = lang === 'ur' ? 'rtl' : 'ltr'; d.dataset.lang = lang;
       if (theme) d.setAttribute('data-theme', theme);
       d.classList.add('js');
     })();
@@ -32,7 +33,14 @@
     <a class="brand title-3" href="#top"><span class="brand-mark" aria-hidden="true"></span><span data-i18n="brand"></span></a>
     <a class="nav-link title-4" href="#how" data-i18n="navHow"></a>
     <a class="nav-link title-4" href="#faq" data-i18n="navFaq"></a>
-    <button id="langBtn" type="button" class="chip button-sm" data-i18n-aria="langLabel"><i class="ph ph-translate" aria-hidden="true"></i><span id="langBtnText"></span></button>
+    <label class="chip lang-pick button-sm"><i class="ph ph-translate" aria-hidden="true"></i>
+      <select id="langSel" data-i18n-aria="langLabel">
+        <option value="en">English</option>
+        <option value="ur">اردو</option>
+        <option value="ro">Roman Urdu</option>
+      </select>
+      <i class="ph ph-caret-down caret" aria-hidden="true"></i>
+    </label>
     <button id="themeBtn" type="button" class="chip icon-only" data-i18n-aria="themeLabel"><i id="themeIcon" class="ph ph-moon" aria-hidden="true"></i></button>
     <a class="btn button-sm nav-cta" href="#tool" data-i18n="navCta"></a>
   </nav>
@@ -40,13 +48,19 @@
   <main id="top">
     <!-- Hero -->
     <header class="hero">
-      <h1 class="heading-1 hero-title"><span data-i18n="heroA"></span><span data-i18n="heroB"></span></h1>
-      <p class="body-3 hero-sub" data-i18n="heroSub"></p>
-      <a class="btn button-md" href="#tool"><span data-i18n="heroCta"></span><i class="ph ph-arrow-down" aria-hidden="true"></i></a>
-      <p class="caption-1 hero-proof" data-i18n="heroProof"></p>
-      <div class="example" aria-hidden="true">
+      <h1 class="heading-1 hero-title enter" style="--e: 0"><span data-i18n="heroA"></span><span data-i18n="heroB"></span></h1>
+      <p class="body-3 hero-sub enter" style="--e: 2" data-i18n="heroSub"></p>
+      <a class="btn button-md hero-cta enter" style="--e: 3" href="#tool"><span data-i18n="heroCta"></span><i class="ph ph-arrow-down" aria-hidden="true"></i></a>
+      <p class="caption-1 hero-proof enter" style="--e: 4" data-i18n="heroProof"></p>
+      <div class="example enter" style="--e: 5" aria-hidden="true">
         <div class="caption-3" data-i18n="exLabel"></div>
-        <div class="example-num num">7/40 = 17.5%</div>
+        <div class="example-num num">7/40 = <span id="exPct">17.5%</span></div>
+        <div class="example-bar">
+          <span style="--w: 12.5%; --i: 0"></span>
+          <span style="--w: 35%; --i: 1"></span>
+          <span style="--w: 35%; --i: 2"></span>
+          <span class="her" style="--w: 17.5%; --i: 3"></span>
+        </div>
         <div class="caption-2" data-i18n="exNote"></div>
       </div>
     </header>
@@ -65,13 +79,15 @@
         <div class="row examples"><span class="caption-1 muted" data-i18n="tryExample"></span><span id="examples" class="row"></span></div>
         <div class="row">
           <button id="micBtn" type="button" class="btn ghost button-md"><i id="micIcon" class="ph ph-microphone" aria-hidden="true"></i><span id="micText" data-i18n="mic"></span></button>
+          <button id="photoBtn" type="button" class="btn ghost button-md"><i class="ph ph-camera" aria-hidden="true"></i><span data-i18n="photo"></span></button>
+          <input id="photoIn" type="file" accept="image/*" hidden>
           <button id="parseBtn" type="button" class="btn button-md"><i class="ph ph-magic-wand" aria-hidden="true"></i><span data-i18n="parse"></span></button>
           <span id="parseStatus" class="caption-1 muted" role="status"></span>
         </div>
         <p id="scopeNote" class="alert body-6" hidden></p>
       </div>
 
-      <div class="card reveal">
+      <div class="card reveal" id="formCard">
         <h3 class="heading-6"><span class="step num">2</span><span data-i18n="s2Title"></span></h3>
         <p class="body-6 muted" data-i18n="s2Hint"></p>
 
@@ -114,12 +130,34 @@
         </div>
         <p class="caption-2 muted" data-i18n="estateHint"></p>
 
-        <details class="assets">
-          <summary class="title-4" data-i18n="assetsTitle"></summary>
+        <div class="assets">
+          <p class="title-4" data-i18n="assetsTitle"></p>
+          <p class="caption-2 muted" data-i18n="assetsHint"></p>
+          <div class="asset-fixed">
+            <label class="field title-4"><span><i class="ph ph-money" aria-hidden="true"></i> <span data-i18n="cash"></span></span>
+              <input id="cash" class="num asset-in" type="number" min="0" inputmode="numeric" placeholder="0"></label>
+            <label class="field title-4"><span><i class="ph ph-diamond" aria-hidden="true"></i> <span data-i18n="gold"></span></span>
+              <input id="gold" class="num asset-in" type="number" min="0" inputmode="numeric" placeholder="0"></label>
+            <label class="field title-4"><span data-i18n="goldTola"></span>
+              <input id="goldTola" class="num" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></label>
+            <label class="field title-4"><span><i class="ph ph-house" aria-hidden="true"></i> <span data-i18n="house"></span></span>
+              <input id="house" class="num asset-in" type="number" min="0" inputmode="numeric" placeholder="0"></label>
+          </div>
           <div id="assetRows" class="asset-rows"></div>
           <button id="addAsset" type="button" class="btn ghost button-sm"><i class="ph ph-plus" aria-hidden="true"></i><span data-i18n="addAsset"></span></button>
           <p class="caption-2 muted" data-i18n="assetsNote"></p>
-        </details>
+        </div>
+
+        <div class="deduct">
+          <p class="title-4"><i class="ph ph-receipt" aria-hidden="true"></i> <span data-i18n="dedTitle"></span></p>
+          <p class="caption-2 muted" data-i18n="dedHint"></p>
+          <div class="asset-fixed">
+            <label class="field title-4"><span data-i18n="funeral"></span><input id="funeral" class="num" type="number" min="0" inputmode="numeric" placeholder="0"></label>
+            <label class="field title-4"><span data-i18n="debts"></span><input id="debts" class="num" type="number" min="0" inputmode="numeric" placeholder="0"></label>
+            <label class="field title-4"><span data-i18n="will"></span><input id="will" class="num" type="number" min="0" inputmode="numeric" placeholder="0"></label>
+          </div>
+          <p class="caption-2 muted" data-i18n="willNote"></p>
+        </div>
 
         <button id="calcBtn" type="button" class="btn wide button-lg"><i class="ph ph-calculator" aria-hidden="true"></i><span data-i18n="calc"></span></button>
         <p id="calcError" class="alert body-6" role="alert" hidden></p>
@@ -129,10 +167,25 @@
         <h3 class="heading-6"><span class="step num">3</span><span data-i18n="s3Title"></span></h3>
         <p class="print-only heading-6" data-i18n="reportTitle"></p>
         <div id="mine" class="mine" hidden></div>
+        <div id="dedBox" class="ded-box" hidden>
+          <p class="title-4 muted" data-i18n="dedResult"></p>
+          <ul id="dedList" class="body-5"></ul>
+          <p id="dedNote" class="caption-2 muted" hidden></p>
+        </div>
 
         <div id="assetShares" class="asset-shares" hidden>
           <p class="title-4 muted" data-i18n="assetsShare"></p>
           <ul id="assetList" class="body-5"></ul>
+        </div>
+
+        <div id="buyBox" class="fair buy">
+          <p class="title-3"><i class="ph ph-key" aria-hidden="true"></i> <span data-i18n="buyTitle"></span></p>
+          <p class="caption-2 muted" data-i18n="buyHint"></p>
+          <div class="grid two">
+            <label class="field title-4"><span data-i18n="buyAsset"></span><select id="buyAsset" class="body-3"></select></label>
+            <label class="field title-4"><span data-i18n="buyKeeper"></span><select id="buyKeeper" class="body-3"></select></label>
+          </div>
+          <div id="buyOut" class="buy-out" hidden></div>
         </div>
 
         <div id="fairBox" class="fair">
@@ -142,9 +195,19 @@
           <p id="fairOut" class="fair-out body-3" role="status" hidden></p>
         </div>
 
-        <p class="title-4 muted" data-i18n="treeTitle"></p>
-        <div id="tree" class="tree"></div>
-        <p id="treeReason" class="tree-reason body-6"></p>
+        <div class="tree-card">
+          <div class="tree-head">
+            <p class="title-3" data-i18n="treeTitle"></p>
+            <ul class="legend caption-4">
+              <li><span class="dot me"></span><span data-i18n="legendYou"></span></li>
+              <li><span class="dot share"></span><span data-i18n="legendShare"></span></li>
+              <li><span class="dot none"></span><span data-i18n="legendNone"></span></li>
+              <li><span class="dot ring"></span><span data-i18n="legendRing"></span></li>
+            </ul>
+          </div>
+          <div id="tree" class="tree"></div>
+          <p id="treeReason" class="tree-reason body-6" role="status"></p>
+        </div>
 
         <p class="title-4 muted" data-i18n="barsTitle"></p>
         <div id="bars" class="bars"></div>
@@ -153,6 +216,17 @@
             <thead><tr class="caption-1"><th data-i18n="thHeir"></th><th data-i18n="thCount"></th><th data-i18n="thEach"></th><th data-i18n="thPct"></th><th data-i18n="thAmt"></th></tr></thead>
             <tbody id="rows" class="body-5"></tbody>
           </table>
+        </div>
+        <div id="assetTableBox" hidden>
+          <p class="title-4 muted" data-i18n="assetTableTitle"></p>
+          <div class="tablewrap">
+            <table class="asset-table">
+              <thead id="assetHead" class="caption-1"></thead>
+              <tbody id="assetBody" class="body-5"></tbody>
+              <tfoot id="assetFoot" class="body-5"></tfoot>
+            </table>
+          </div>
+          <p class="caption-2 muted" data-i18n="assetTableNote"></p>
         </div>
         <p id="flagNote" class="alert body-6" hidden></p>
         <details class="reasons">
@@ -169,6 +243,10 @@
           <div class="bar"></div><div class="bar"></div><div class="bar short"></div>
         </div>
         <div id="aiBody" hidden>
+          <div class="row listen-row">
+            <button id="listenBtn" type="button" class="btn ghost button-sm"><i id="listenIcon" class="ph ph-speaker-high" aria-hidden="true"></i><span id="listenText" data-i18n="listen"></span></button>
+            <span id="listenStatus" class="caption-2 muted" role="status"></span>
+          </div>
           <p id="explanation" class="body-3"></p>
           <h4 class="title-2" data-i18n="stepsTitle"></h4>
           <ol id="steps" class="body-3"></ol>
@@ -192,6 +270,13 @@
             <p class="caption-2 muted" data-i18n="askNote"></p>
           </div>
         </div>
+      </div>
+
+      <div class="card help reveal" id="help">
+        <h3 class="heading-6"><i class="ph ph-lifebuoy icon-sm" aria-hidden="true"></i><span data-i18n="helpTitle"></span></h3>
+        <p class="body-6 muted" data-i18n="helpSub"></p>
+        <ul id="helpList" class="help-list"></ul>
+        <p class="caption-2 muted" data-i18n="helpNote"></p>
       </div>
     </section>
 

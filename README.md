@@ -21,10 +21,15 @@ Also in the tool:
 
 - **Fairness checker:** enter what the family is offering and see how far it falls short of the rightful share.
 - **Family map:** an interactive picture of the family with each heir's share and the reason for it.
-- **Asset split:** list a house, gold or cash separately and see the share of each.
+- **Asset split:** enter cash, gold (value and tola) and house separately, plus any other asset. Each is divided on its own for every heir, with a total per heir and a total for the whole estate at the end.
 - **Question chat:** ask follow up questions; Gemini answers from the calculated case.
 - **Share and print:** send the draft request on WhatsApp, or print the result as a report.
-- **English and Urdu, light and dark mode.**
+- **Before division:** funeral costs, then debts, then a will (capped at one third of what is left after debts) are taken out first; only the rest is divided.
+- **If one heir keeps the house:** choose the asset and who keeps it (for example the brothers); the app shows what they must pay each other heir in money.
+- **Voice in, voice out:** speak the story (Gemini writes it down in Urdu script, English or Roman Urdu); press Listen to hear the explanation read aloud by Gemini's voice.
+- **Photo of a paper:** take a picture of a handwritten family list or note; Gemini reads it into the form for the user to check.
+- **Where to get help:** official offices (Punjab women helpline 1043, Ombudsperson Punjab, NADRA succession certificate, police 15), each linked to its official page.
+- **English, Urdu and Roman Urdu** (dropdown), light and dark mode.
 
 **AI never calculates the shares.** Gemini is used only to understand language and to explain. The numbers come from auditable, tested code.
 
@@ -32,8 +37,10 @@ Also in the tool:
 
 | Part | Technology |
 |---|---|
-| Language understanding and Urdu explanation | Google Gemini API |
-| Voice input | Browser speech recognition (Urdu, Chrome) |
+| Language understanding and Urdu explanation | Google Gemini API (text) |
+| Reading a photo of a paper | Gemini API (image input) |
+| Voice input | Gemini API (audio input); browser speech recognition as fallback without a key |
+| Read aloud | Gemini text to speech; browser voice as fallback |
 | Share calculator | Plain JavaScript, exact fractions, `public/calc.js` |
 | Server | Node.js, no dependencies, `server.js` |
 | Front end | HTML, CSS, JavaScript; English and Urdu, light and dark mode; Manrope and Noto Nastaliq Urdu (Google Fonts), Phosphor icons |
@@ -59,13 +66,18 @@ Run the calculator tests:
 npm test
 ```
 
+## Deploy to Google Cloud Run (optional)
+
+Not done yet. To deploy from the Google Cloud console: Cloud Run → Create service → Continuously deploy from a repository (GitHub, this repo) → build type Dockerfile → allow unauthenticated invocations → under Variables and secrets add `GEMINI_API_KEY` → Create. Only list Cloud Run in the technology table once it is live.
+
 ## Scope and limitations
 
 - Sunni Hanafi rules, close heirs only: spouse, parents, sons, daughters, full brothers and sisters.
 - Other schools of law, non-Muslim families, grandchildren, grandparents and half or step relatives are not covered. The app says so and refers the user to a scholar or lawyer.
 - The output is guidance, not a legal ruling or a religious fatwa.
 - The next steps are general guidance written by AI and must be confirmed with the relevant office.
-- No names, CNIC numbers or other identifiers are collected, and nothing is stored.
+- No names, CNIC numbers or other identifiers are asked for, and nothing is stored. Text, voice recordings and photos are sent to Google Gemini only to fill the form or read aloud, and are not saved by the app.
+- The help list was taken from official websites; numbers and services can change, so confirm on the linked page.
 - This is a hackathon prototype, not a production service.
 
 ## AI disclosure
@@ -74,4 +86,4 @@ Gemini is used inside the app as described above. AI coding tools (Claude) were 
 
 ## Team
 
-Awais Ali Asad, Ayesha Qaisar Cheema
+Awais Ali Asad, Ayesha Qaisar Cheema, Dua Fatima
