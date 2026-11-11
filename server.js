@@ -19,30 +19,38 @@ if (existsSync(envFile)) {
 }
 
 const PORT = Number(process.env.PORT) || 3000;
-const MODELS = [process.env.GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash'].filter(Boolean);
+// Tried in order; a model that errors or is too slow is skipped for the next one.
+const MODELS = [process.env.GEMINI_MODEL, 'gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'].filter(Boolean);
 let workingModel = null;
 
 async function gemini(system, user, schema) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY is not set');
+  const order = workingModel ? [workingModel, ...MODELS.filter((m) => m !== workingModel)] : MODELS;
   let lastErr;
-  for (const model of workingModel ? [workingModel] : MODELS) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: [{ role: 'user', parts: [{ text: user }] }],
-        generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: schema },
-      }),
-      signal: AbortSignal.timeout(45000),
-    });
-    if (res.status === 404) { lastErr = new Error(`Gemini model not found: ${model}`); continue; }
-    if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
-    const data = await res.json();
-    workingModel = model;
-    const text = (data.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
-    return JSON.parse(text);
+  for (const model of order) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: [{ role: 'user', parts: [{ text: user }] }],
+          generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: schema },
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) throw new Error(`Gemini ${res.status} (${model}): ${(await res.text()).slice(0, 300)}`);
+      const data = await res.json();
+      const text = (data.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
+      const parsed = JSON.parse(text);
+      workingModel = model;
+      return parsed;
+    } catch (err) {
+      console.error(`${model}: ${err.message}`);
+      lastErr = err;
+      if (workingModel === model) workingModel = null;
+    }
   }
   throw lastErr;
 }
@@ -50,16 +58,22 @@ async function gemini(system, user, schema) {
 const PARSE_SYSTEM = `You fill in a form for an inheritance calculator. The input is Urdu, Roman Urdu or English text in which a person (usually a woman heir) describes a relative who has died and the surviving family.
 Rules:
 - All relations in the output are relative to the DECEASED person, not the speaker. If the speaker's father died, the speaker's brothers are the deceased's sons and the speaker's mother is the deceased's wife.
-- Count the speaker herself or himself among the heirs (for example "main aik beti hoon" means she is one of the daughters).
+- Work out each relation step by step from the deceased's side. Examples: if the speaker's mother died, the speaker's nana and nani (maternal grandparents) are the deceased's father and mother, and the speaker's mamu and khala are the deceased's brothers and sisters. If the speaker's father died, the speaker's dada and dadi are the deceased's father and mother, and the speaker's chacha, taya and phuppo are the deceased's brothers and sisters. If the speaker's husband died, her saas and susar are the deceased's mother and father.
+- First fill "working": list every person mentioned, one by one, as "speaker's X = deceased's Y", including the speaker herself. Then fill the other fields from that list.
+- Count the speaker herself or himself among the heirs (for example "main aik beti hoon" means she is one of the daughters). If the speaker's husband died, the speaker is his wife, so wives is at least 1. If the speaker's father died and her mother (ammi, walida) is alive, that mother is the deceased's wife, so wives is at least 1 — she is NOT the deceased's mother.
+- A relative who is the deceased's parent, child, spouse or full sibling is always in scope, whatever the speaker calls them.
+- Write outOfScope in Urdu script.
 - Count only living heirs. If something is not mentioned, use 0, false or null. Never guess.
 - brothers and sisters mean FULL brothers and sisters of the deceased only.
 - estate is the total value in Pakistani rupees as a plain number (1 lakh = 100000, 1 crore = 10000000); null if not given.
 - userRelation is the speaker's relation to the deceased.
-- outOfScope: if the text mentions grandchildren, grandparents, half or step siblings, uncles, a non-Muslim family, or a non-Hanafi school, say so in one short Urdu sentence. Otherwise an empty string.`;
+- outOfScope: only relatives that are NOT the deceased's spouse, parents, children or full siblings are out of scope. If the text mentions the deceased's grandchildren, the deceased's own grandparents, half or step siblings, the deceased's uncles or aunts, a non-Muslim family, or a non-Hanafi school, say so in one short Urdu sentence. Otherwise an empty string.`;
 
 const PARSE_SCHEMA = {
   type: 'OBJECT',
+  propertyOrdering: ['working', 'deceasedGender', 'husband', 'wives', 'sons', 'daughters', 'father', 'mother', 'brothers', 'sisters', 'estate', 'userRelation', 'outOfScope'],
   properties: {
+    working: { type: 'STRING' },
     deceasedGender: { type: 'STRING', enum: ['male', 'female'] },
     husband: { type: 'BOOLEAN' },
     wives: { type: 'INTEGER' },
@@ -73,7 +87,7 @@ const PARSE_SCHEMA = {
     userRelation: { type: 'STRING', enum: ['daughter', 'wife', 'mother', 'sister', 'son', 'husband', 'father', 'brother', 'other'] },
     outOfScope: { type: 'STRING' },
   },
-  required: ['deceasedGender', 'husband', 'wives', 'sons', 'daughters', 'father', 'mother', 'brothers', 'sisters', 'userRelation', 'outOfScope'],
+  required: ['working', 'deceasedGender', 'husband', 'wives', 'sons', 'daughters', 'father', 'mother', 'brothers', 'sisters', 'userRelation', 'outOfScope'],
 };
 
 const EXPLAIN_SYSTEM = `You are Wirasat Saathi, a helper that explains an inheritance calculation to a woman in Pakistan in simple, warm, respectful Urdu (Urdu script).

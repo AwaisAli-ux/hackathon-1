@@ -50,8 +50,12 @@ Done and verified:
 - Calculator: all 14 tests pass.
 - Interface: checked in the browser; form, result table, "your share" card and the no-AI fallback all work.
 
+- Gemini: tested with a real key. Story → form works on 6 Urdu and Roman Urdu stories, including relation mapping (nana/nani, dadi, chacha, saas) and out-of-scope grandchildren. Explanation, steps and draft come back in Urdu with the calculator's numbers.
+- Gemini models: `server.js` tries `GEMINI_MODEL` (if set), `gemini-3.5-flash`, `gemini-3.7-flash`, `gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, moving on when one errors or takes over 15 seconds. During testing `gemini-3.5-flash` returned 503 (high demand) and `gemini-3.8-flash` / `gemini-flash-latest` hung, so `gemini-3.5-flash-lite` did the work. The 2.5 models are closed to new users.
+- The `.env` file with the key is NOT in the zip or the repo. In a new place, copy `.env.example` to `.env` and add the key. The key was pasted in a chat once, so the user should delete it in AI Studio after the hackathon.
+
 Not verified:
-- **Gemini calls have not been tested with a real key.** The user must put `GEMINI_API_KEY` in `.env`. `server.js` tries `GEMINI_MODEL` (if set), then `gemini-flash-latest`, then `gemini-2.5-flash`. If all return 404, look up a current model name and set `GEMINI_MODEL`.
+- AI parsing can still misread a story. The confirmation form is the safeguard: always tell the user to check it before calculating.
 - Urdu voice input uses the browser's speech recognition (`ur-PK`); it needs Chrome, a microphone and internet. Not tested with real speech.
 
 Not built:
@@ -61,8 +65,8 @@ Not built:
 
 ## Next steps, in order
 
-1. Add the Gemini key, then test "فارم خود بھریں" and the explanation with 2 or 3 stories. Fix prompt or model issues in `server.js`.
-2. Test voice input in Chrome.
+1. Test voice input in Chrome with real Urdu speech.
+2. Rehearse the full demo twice in Chrome.
 3. If time allows: deploy (Cloud Run or Firebase Hosting with a function for the Gemini proxy) to earn Google technology marks.
 4. Prepare slides: problem, who is affected, solution, the "code calculates, AI explains" split, SDG 5, technology stack, limitations, live demo.
 5. Demo story to rehearse: father died; wife, 2 sons, 1 daughter; estate 4,000,000. Daughter's share is 7/40 = 17.5% = 700,000.
