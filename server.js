@@ -25,10 +25,11 @@ const MODELS = [process.env.GEMINI_MODEL, 'gemini-3.5-flash-lite', 'gemini-flash
 let workingModel = null;
 const coolUntil = new Map(); // model -> time before which we skip it after a failure
 
-async function gemini(system, user, schema) {
+async function gemini(system, user, schema, prefer = []) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY is not set');
-  const all = workingModel ? [workingModel, ...MODELS.filter((m) => m !== workingModel)] : MODELS;
+  const base = workingModel ? [workingModel, ...MODELS.filter((m) => m !== workingModel)] : MODELS;
+  const all = [...prefer, ...base.filter((m) => !prefer.includes(m))];
   const fresh = all.filter((m) => (coolUntil.get(m) || 0) < Date.now());
   const order = fresh.length ? fresh : all;
   let lastErr;
@@ -50,7 +51,7 @@ async function gemini(system, user, schema) {
       const data = await res.json();
       const text = (data.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
       const parsed = JSON.parse(text);
-      workingModel = model;
+      if (!prefer.includes(model)) workingModel = model;
       return parsed;
     } catch (err) {
       console.error(`${model}: ${err.message}`);
@@ -63,40 +64,173 @@ async function gemini(system, user, schema) {
   throw lastErr;
 }
 
-const PARSE_SYSTEM = `You fill in a form for an inheritance calculator. The input is Urdu, Roman Urdu or English text in which a person (usually a woman heir) describes a relative who has died and the surviving family.
+// Story parsing. Gemini only names each person with a standard kinship word.
+// Working out who that person is to the deceased, the counting, and the
+// "out of scope" decision are all done by code in peopleToForm().
+const PARSE_SYSTEM = `You read a short story about an inheritance. The text is Urdu, Roman Urdu or English. A person (usually a woman heir) describes a relative who has died and the family left behind.
+
+Your job is only to LIST the people mentioned, using standard kinship words. Do not work out inheritance. Do not decide who is an heir.
+
+Fields:
+- deceasedIsSpeakers: who the dead person is to the speaker (father, mother, husband, wife, brother, sister, son, daughter, other).
+- speakerGender: female unless the text clearly shows a man is speaking.
+- people: one entry per kind of person mentioned. For each:
+  * who: the words the speaker used, in a few words.
+  * relativeTo: "speaker" if the person is described from the speaker's side ("my nana", "meri ammi", "hum teen behnein", "our daughters"); "deceased" if described from the dead person's side ("his mother", "her brother", "un ki walida", "un ka bhai").
+  * term: the kinship word, relative to whoever relativeTo names. Glossary:
+      self = the speaker alone ("I", "main")
+      father = abbu, walid, baap;  mother = ammi, walida, maa
+      husband = shohar, miyan;  wife = biwi
+      son = beta;  daughter = beti
+      brother = bhai;  sister = behen
+      paternal_grandfather = dada;  paternal_grandmother = dadi
+      maternal_grandfather = nana;  maternal_grandmother = nani
+      paternal_uncle = chacha, taya;  paternal_aunt = phuppo
+      maternal_uncle = mamu;  maternal_aunt = khala
+      father_in_law = susar;  mother_in_law = saas
+      husbands_brother = devar, jeth;  husbands_sister = nand
+      wifes_brother = saala;  wifes_sister = saali
+      brothers_wife = bhabhi;  sisters_husband = behnoi
+      son_in_law = damad;  daughter_in_law = bahu
+      grandson = pota, nawasa;  granddaughter = poti, nawasi;  grandchild = grandchildren of unknown gender
+      nephew = bhatija, bhanja;  niece = bhatiji, bhanji
+      half_or_step_sibling = sautela bhai or behen, half brother or sister
+      other = anyone else
+  * count: how many.
+  * includesSpeaker: true if the speaker is one of the people in this entry.
+  * alive: false only if the text says this person has died.
+- estate: total value in Pakistani rupees as a plain number (1 lakh = 100000, 1 crore = 10000000; "1 crore 20 lakh" = 12000000); null if not given.
+
 Rules:
-- All relations in the output are relative to the DECEASED person, not the speaker. If the speaker's father died, the speaker's brothers are the deceased's sons and the speaker's mother is the deceased's wife.
-- Work out each relation step by step from the deceased's side. Examples: if the speaker's mother died, the speaker's nana and nani (maternal grandparents) are the deceased's father and mother, and the speaker's mamu and khala are the deceased's brothers and sisters. If the speaker's father died, the speaker's dada and dadi are the deceased's father and mother, and the speaker's chacha, taya and phuppo are the deceased's brothers and sisters. If the speaker's husband died, her saas and susar are the deceased's mother and father.
-- First fill "working": list every person mentioned, one by one, as "speaker's X = deceased's Y", including the speaker herself. Then fill the other fields from that list.
-- Count the speaker herself or himself among the heirs (for example "main aik beti hoon" means she is one of the daughters). If the speaker's husband died, the speaker is his wife, so wives is at least 1. If the speaker's father died and her mother (ammi, walida) is alive, that mother is the deceased's wife, so wives is at least 1 — she is NOT the deceased's mother.
-- A relative who is the deceased's parent, child, spouse or full sibling is always in scope, whatever the speaker calls them.
-- Write outOfScope in the language named on the first line of the input (Urdu means Urdu script).
-- Count only living heirs. If something is not mentioned, use 0, false or null. Never guess.
-- brothers and sisters mean FULL brothers and sisters of the deceased only.
-- estate is the total value in Pakistani rupees as a plain number (1 lakh = 100000, 1 crore = 10000000); null if not given.
-- userRelation is the speaker's relation to the deceased.
-- outOfScope: only relatives that are NOT the deceased's spouse, parents, children or full siblings are out of scope. If the text mentions the deceased's grandchildren, the deceased's own grandparents, half or step siblings, the deceased's uncles or aunts, a non-Muslim family, or a non-Hanafi school, say so in one short Urdu sentence. Otherwise an empty string.`;
+- The speaker appears in EXACTLY ONE entry, with includesSpeaker true. Never add a second entry for the speaker.
+  * "We are three sisters" = term sister, count 3, includesSpeaker true. The three already include the speaker.
+  * "One brother and we three sisters" = brother count 1; sister count 3 with includesSpeaker true.
+  * "My mother, two brothers and I, one daughter" = mother count 1; brother count 2; self count 1 with includesSpeaker true.
+  * "My husband died" with no other mention of herself = self count 1, includesSpeaker true.
+- If the text says there are none of something ("no brother"), do not list it.
+- List people who have died too, with alive false. Do not list the deceased person.
+- Never add people who are not mentioned.`;
+
+const TERMS = ['self', 'father', 'mother', 'husband', 'wife', 'son', 'daughter', 'brother', 'sister',
+  'paternal_grandfather', 'paternal_grandmother', 'maternal_grandfather', 'maternal_grandmother',
+  'paternal_uncle', 'paternal_aunt', 'maternal_uncle', 'maternal_aunt',
+  'father_in_law', 'mother_in_law', 'husbands_brother', 'husbands_sister', 'wifes_brother', 'wifes_sister',
+  'brothers_wife', 'sisters_husband', 'son_in_law', 'daughter_in_law',
+  'grandson', 'granddaughter', 'grandchild', 'nephew', 'niece', 'half_or_step_sibling', 'other'];
 
 const PARSE_SCHEMA = {
   type: 'OBJECT',
-  propertyOrdering: ['working', 'deceasedGender', 'husband', 'wives', 'sons', 'daughters', 'father', 'mother', 'brothers', 'sisters', 'estate', 'userRelation', 'outOfScope'],
+  propertyOrdering: ['deceasedIsSpeakers', 'speakerGender', 'people', 'estate'],
   properties: {
-    working: { type: 'STRING' },
-    deceasedGender: { type: 'STRING', enum: ['male', 'female'] },
-    husband: { type: 'BOOLEAN' },
-    wives: { type: 'INTEGER' },
-    sons: { type: 'INTEGER' },
-    daughters: { type: 'INTEGER' },
-    father: { type: 'BOOLEAN' },
-    mother: { type: 'BOOLEAN' },
-    brothers: { type: 'INTEGER' },
-    sisters: { type: 'INTEGER' },
+    deceasedIsSpeakers: { type: 'STRING', enum: ['father', 'mother', 'husband', 'wife', 'brother', 'sister', 'son', 'daughter', 'other'] },
+    speakerGender: { type: 'STRING', enum: ['female', 'male'] },
+    people: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        propertyOrdering: ['who', 'relativeTo', 'term', 'count', 'includesSpeaker', 'alive'],
+        properties: {
+          who: { type: 'STRING' },
+          relativeTo: { type: 'STRING', enum: ['speaker', 'deceased'] },
+          term: { type: 'STRING', enum: TERMS },
+          count: { type: 'INTEGER' },
+          includesSpeaker: { type: 'BOOLEAN' },
+          alive: { type: 'BOOLEAN' },
+        },
+        required: ['who', 'relativeTo', 'term', 'count', 'includesSpeaker', 'alive'],
+      },
+    },
     estate: { type: 'NUMBER', nullable: true },
-    userRelation: { type: 'STRING', enum: ['daughter', 'wife', 'mother', 'sister', 'son', 'husband', 'father', 'brother', 'other'] },
-    outOfScope: { type: 'STRING' },
   },
-  required: ['working', 'deceasedGender', 'husband', 'wives', 'sons', 'daughters', 'father', 'mother', 'brothers', 'sisters', 'userRelation', 'outOfScope'],
+  required: ['deceasedIsSpeakers', 'speakerGender', 'people'],
 };
+
+// ---- Kinship logic in code ----
+// For each "who died" case: the speaker's word for a relative -> that relative's relation to the deceased.
+// CHILD and SIB are filled in from the speaker's gender. Anything not listed is out of scope.
+const CHILD = '@child', SIB = '@sibling', PARENT = '@parent';
+const FROM_SPEAKER = {
+  father: { self: CHILD, brother: 'son', sister: 'daughter', mother: 'wife',
+    paternal_grandfather: 'father', paternal_grandmother: 'mother', paternal_uncle: 'full_brother', paternal_aunt: 'full_sister' },
+  mother: { self: CHILD, brother: 'son', sister: 'daughter', father: 'husband',
+    maternal_grandfather: 'father', maternal_grandmother: 'mother', maternal_uncle: 'full_brother', maternal_aunt: 'full_sister' },
+  husband: { self: 'wife', son: 'son', daughter: 'daughter', father_in_law: 'father', mother_in_law: 'mother',
+    husbands_brother: 'full_brother', husbands_sister: 'full_sister' },
+  wife: { self: 'husband', son: 'son', daughter: 'daughter', father_in_law: 'father', mother_in_law: 'mother',
+    wifes_brother: 'full_brother', wifes_sister: 'full_sister' },
+  brother: { self: SIB, brother: 'full_brother', sister: 'full_sister', father: 'father', mother: 'mother',
+    brothers_wife: 'wife', nephew: 'son', niece: 'daughter' },
+  sister: { self: SIB, brother: 'full_brother', sister: 'full_sister', father: 'father', mother: 'mother',
+    sisters_husband: 'husband', nephew: 'son', niece: 'daughter' },
+  son: { self: PARENT, husband: 'father', wife: 'mother', son: 'full_brother', daughter: 'full_sister',
+    daughter_in_law: 'wife', grandson: 'son', granddaughter: 'daughter' },
+  daughter: { self: PARENT, husband: 'father', wife: 'mother', son: 'full_brother', daughter: 'full_sister',
+    son_in_law: 'husband', grandson: 'son', granddaughter: 'daughter' },
+};
+// Words used from the dead person's own side ("his mother", "her brother").
+const FROM_DECEASED = { father: 'father', mother: 'mother', husband: 'husband', wife: 'wife',
+  son: 'son', daughter: 'daughter', brother: 'full_brother', sister: 'full_sister' };
+const GENDER_OF = { father: 'male', husband: 'male', brother: 'male', son: 'male', mother: 'female', wife: 'female', sister: 'female', daughter: 'female' };
+
+function peopleToForm(parsed, lang) {
+  const died = parsed.deceasedIsSpeakers;
+  const female = parsed.speakerGender !== 'male';
+  const table = FROM_SPEAKER[died] || {};
+  const count = { husband: 0, wife: 0, son: 0, daughter: 0, father: 0, mother: 0, full_brother: 0, full_sister: 0 };
+  const outside = [];
+  let userRelation = 'other';
+
+  // The speaker must be counted once. If two entries claim her, keep the larger group.
+  const people = parsed.people || [];
+  const keep = people.filter((p) => p.includesSpeaker).sort((a, b) => (b.count || 1) - (a.count || 1))[0];
+
+  // "I, one daughter": the model sometimes lists the speaker twice, once as self and once by her role.
+  const selfEntry = people.find((p) => p.term === 'self');
+  const ownRole = { father: 1, mother: 1 }[died] ? (female ? 'daughter' : 'son') : null;
+
+  for (const p of people) {
+    if (p.includesSpeaker && p !== keep) continue;
+    // Words like "his", "her", "un ki" show the person is named from the dead person's side.
+    // When a child or a sibling died, both sides share the same words (son, daughter, husband),
+    // so the model's relativeTo is trusted there. When a parent or spouse died it is not needed.
+    const trustModel = ['son', 'daughter', 'brother', 'sister'].includes(died) && p.relativeTo === 'deceased';
+    const fromDeceased = trustModel || /(his|her|their|deceased|un ?k[aie]|us ?k[aie])|ان ک|اس ک|مرحوم/i.test(p.who || '');
+    if (selfEntry && p !== selfEntry && ownRole && p.term === ownRole && (p.count || 1) === 1 && !fromDeceased) continue;
+    // The model is unreliable about relativeTo, so the speaker's side is tried first unless the words say otherwise.
+    let rel = fromDeceased
+      ? (FROM_DECEASED[p.term] || table[p.term])
+      : (table[p.term] || (p.relativeTo === 'deceased' ? FROM_DECEASED[p.term] : undefined));
+    if (rel === CHILD) rel = female ? 'daughter' : 'son';
+    if (rel === SIB) rel = female ? 'full_sister' : 'full_brother';
+    if (rel === PARENT) rel = female ? 'mother' : 'father';
+    if (p.includesSpeaker && rel) {
+      userRelation = { full_sister: 'sister', full_brother: 'brother' }[rel] || rel;
+    }
+    if (!rel) { if (p.who) outside.push(p.who); continue; }
+    if (p.alive === false) continue;
+    count[rel] += Math.max(1, Math.floor(Number(p.count) || 1));
+  }
+
+  const deceasedGender = GENDER_OF[died] || (count.husband > 0 ? 'female' : 'male');
+  const names = outside.join(lang === 'en' ? ', ' : '، ');
+  const outOfScope = outside.length
+    ? (lang === 'en' ? `${names} cannot be counted here.` : `${names} اس حساب میں شامل نہیں۔`)
+    : '';
+  return {
+    deceasedGender,
+    husband: deceasedGender === 'female' && count.husband > 0,
+    wives: deceasedGender === 'male' ? Math.min(4, count.wife) : 0,
+    sons: count.son,
+    daughters: count.daughter,
+    father: count.father > 0,
+    mother: count.mother > 0,
+    brothers: count.full_brother,
+    sisters: count.full_sister,
+    estate: Number(parsed.estate) > 0 ? Number(parsed.estate) : null,
+    userRelation,
+    outOfScope,
+  };
+}
 
 const EXPLAIN_SYSTEM = `You are Wirasat Saathi, a helper that explains an inheritance calculation to a woman in Pakistan in simple, warm, respectful language.
 Write everything in the language named in "outputLanguage" in the JSON: Urdu means Urdu script, English means plain English.
@@ -165,8 +299,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/parse') {
       const { text, lang } = await readBody(req);
       if (!text || !String(text).trim()) return send(res, 400, { error: 'text is required' });
-      const language = lang === 'en' ? 'English' : 'Urdu';
-      return send(res, 200, await gemini(PARSE_SYSTEM, `Language for outOfScope: ${language}\nStory:\n${String(text).slice(0, 4000)}`, PARSE_SCHEMA));
+      // Reading family relations is the hardest step, so the more careful models go first here.
+      const parsed = await gemini(PARSE_SYSTEM, String(text).slice(0, 4000), PARSE_SCHEMA, ['gemini-3.1-flash-lite', 'gemini-3.5-flash']);
+      return send(res, 200, peopleToForm(parsed, lang === 'en' ? 'en' : 'ur'));
     }
     if (req.method === 'POST' && url.pathname === '/api/explain') {
       const body = await readBody(req);
