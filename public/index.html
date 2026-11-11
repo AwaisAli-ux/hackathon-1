@@ -3,118 +3,210 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>وراثت ساتھی — Wirasat Saathi</title>
+  <title>Wirasat Saathi | Know your inheritance share</title>
+  <meta name="description" content="Wirasat Saathi tells a woman her inheritance share in Urdu or English. Tested code does the maths, AI explains it and lists the next steps.">
+  <meta property="og:title" content="Wirasat Saathi | Know your inheritance share">
+  <meta property="og:description" content="Tested code works out every heir's share. AI explains it in plain words with your next steps.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f6b52'/%3E%3Cpath d='M9 10l4 12 3-8 3 8 4-12' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <script>
+    // Apply saved language and theme before first paint.
+    (function () {
+      var d = document.documentElement, lang = 'ur', theme = null;
+      try { lang = localStorage.getItem('ws-lang') || 'ur'; theme = localStorage.getItem('ws-theme'); } catch (e) {}
+      d.lang = lang; d.dir = lang === 'ur' ? 'rtl' : 'ltr';
+      if (theme) d.setAttribute('data-theme', theme);
+      d.classList.add('js');
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Noto+Nastaliq+Urdu:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="hero">
-    <h1>وراثت ساتھی</h1>
-    <p class="tag">اپنا حصہ جانیں، اپنا حق لیں</p>
-    <p class="sub">حساب کوڈ کرتا ہے، وضاحت AI کرتا ہے</p>
-  </header>
+  <a class="skip button-sm" href="#tool" data-i18n="skip"></a>
 
-  <main>
-    <section class="card">
-      <h2><span class="num">1</span> اپنی صورتحال بتائیں</h2>
-      <p class="hint">بول کر یا لکھ کر بتائیں کہ کس کا انتقال ہوا اور خاندان میں کون کون ہے۔</p>
-      <textarea id="story" rows="3" placeholder="مثال: میرے والد کا انتقال ہو گیا ہے۔ میری والدہ، دو بھائی اور میں ایک بیٹی ہوں۔ جائیداد چالیس لاکھ کی ہے۔"></textarea>
-      <div class="row">
-        <button id="micBtn" type="button" class="btn ghost">🎤 بولیں</button>
-        <button id="parseBtn" type="button" class="btn">فارم خود بھریں</button>
-        <span id="parseStatus" class="status"></span>
+  <nav class="nav" aria-label="Main">
+    <a class="brand title-3" href="#top"><span class="brand-mark" aria-hidden="true"></span><span data-i18n="brand"></span></a>
+    <a class="nav-link title-4" href="#how" data-i18n="navHow"></a>
+    <a class="nav-link title-4" href="#faq" data-i18n="navFaq"></a>
+    <button id="langBtn" type="button" class="chip button-sm" data-i18n-aria="langLabel"><i class="ph ph-translate" aria-hidden="true"></i><span id="langBtnText"></span></button>
+    <button id="themeBtn" type="button" class="chip icon-only" data-i18n-aria="themeLabel"><i id="themeIcon" class="ph ph-moon" aria-hidden="true"></i></button>
+    <a class="btn button-sm nav-cta" href="#tool" data-i18n="navCta"></a>
+  </nav>
+
+  <main id="top">
+    <!-- Hero -->
+    <header class="hero">
+      <h1 class="heading-1 hero-title"><span data-i18n="heroA"></span><span data-i18n="heroB"></span></h1>
+      <p class="body-3 hero-sub" data-i18n="heroSub"></p>
+      <a class="btn button-md" href="#tool"><span data-i18n="heroCta"></span><i class="ph ph-arrow-down" aria-hidden="true"></i></a>
+      <p class="caption-1 hero-proof" data-i18n="heroProof"></p>
+      <div class="example" aria-hidden="true">
+        <div class="caption-3" data-i18n="exLabel"></div>
+        <div class="example-num num">7/40 = 17.5%</div>
+        <div class="caption-2" data-i18n="exNote"></div>
       </div>
-      <p id="scopeNote" class="warn" hidden></p>
-    </section>
+    </header>
 
-    <section class="card">
-      <h2><span class="num">2</span> خاندان کی تفصیل دیکھ لیں</h2>
-      <p class="hint">صرف وہ رشتہ دار لکھیں جو زندہ ہیں۔ آپ یہ فارم خود بھی بھر سکتی ہیں۔</p>
+    <!-- Tool -->
+    <section id="tool" class="section tool">
+      <div class="section-head reveal">
+        <h2 class="heading-3" data-i18n="toolTitle"></h2>
+        <p class="body-3 muted" data-i18n="toolSub"></p>
+      </div>
 
-      <div class="field">
-        <label>جن کا انتقال ہوا</label>
-        <div class="seg">
-          <label><input type="radio" name="gender" value="male" checked> مرد</label>
-          <label><input type="radio" name="gender" value="female"> عورت</label>
+      <div class="card reveal">
+        <h3 class="heading-6"><span class="step num">1</span><span data-i18n="s1Title"></span></h3>
+        <p class="body-6 muted" data-i18n="s1Hint"></p>
+        <textarea id="story" class="body-3" rows="3" data-i18n-ph="storyPh"></textarea>
+        <div class="row">
+          <button id="micBtn" type="button" class="btn ghost button-md"><i id="micIcon" class="ph ph-microphone" aria-hidden="true"></i><span id="micText" data-i18n="mic"></span></button>
+          <button id="parseBtn" type="button" class="btn button-md"><i class="ph ph-magic-wand" aria-hidden="true"></i><span data-i18n="parse"></span></button>
+          <span id="parseStatus" class="caption-1 muted" role="status"></span>
+        </div>
+        <p id="scopeNote" class="alert body-6" hidden></p>
+      </div>
+
+      <div class="card reveal">
+        <h3 class="heading-6"><span class="step num">2</span><span data-i18n="s2Title"></span></h3>
+        <p class="body-6 muted" data-i18n="s2Hint"></p>
+
+        <div class="field">
+          <span class="title-4" data-i18n="deceased"></span>
+          <div class="seg">
+            <label class="body-5"><input type="radio" name="gender" value="male" checked> <span data-i18n="male"></span></label>
+            <label class="body-5"><input type="radio" name="gender" value="female"> <span data-i18n="female"></span></label>
+          </div>
+        </div>
+
+        <div class="grid">
+          <label class="field title-4" id="wivesWrap"><span data-i18n="wives"></span><input id="wives" class="num" type="number" min="0" max="4" value="0" inputmode="numeric"></label>
+          <label class="field check title-4" id="husbandWrap" hidden><input id="husband" type="checkbox"> <span data-i18n="husband"></span></label>
+          <label class="field title-4"><span data-i18n="sons"></span><input id="sons" class="num" type="number" min="0" value="0" inputmode="numeric"></label>
+          <label class="field title-4"><span data-i18n="daughters"></span><input id="daughters" class="num" type="number" min="0" value="0" inputmode="numeric"></label>
+          <label class="field title-4"><span data-i18n="brothers"></span><input id="brothers" class="num" type="number" min="0" value="0" inputmode="numeric"></label>
+          <label class="field title-4"><span data-i18n="sisters"></span><input id="sisters" class="num" type="number" min="0" value="0" inputmode="numeric"></label>
+          <label class="field check title-4"><input id="father" type="checkbox"> <span data-i18n="father"></span></label>
+          <label class="field check title-4"><input id="mother" type="checkbox"> <span data-i18n="mother"></span></label>
+        </div>
+
+        <div class="grid two">
+          <label class="field title-4"><span data-i18n="estate"></span>
+            <input id="estate" class="num" type="number" min="0" placeholder="4000000" inputmode="numeric">
+          </label>
+          <label class="field title-4"><span data-i18n="relation"></span>
+            <select id="relation" class="body-3">
+              <option value="daughter" data-i18n="rDaughter"></option>
+              <option value="wife" data-i18n="rWife"></option>
+              <option value="mother" data-i18n="rMother"></option>
+              <option value="sister" data-i18n="rSister"></option>
+              <option value="son" data-i18n="rSon"></option>
+              <option value="husband" data-i18n="rHusband"></option>
+              <option value="father" data-i18n="rFather"></option>
+              <option value="brother" data-i18n="rBrother"></option>
+              <option value="other" data-i18n="rOther"></option>
+            </select>
+          </label>
+        </div>
+        <p class="caption-2 muted" data-i18n="estateHint"></p>
+
+        <button id="calcBtn" type="button" class="btn wide button-lg"><i class="ph ph-calculator" aria-hidden="true"></i><span data-i18n="calc"></span></button>
+        <p id="calcError" class="alert body-6" role="alert" hidden></p>
+      </div>
+
+      <div class="card" id="resultCard" hidden>
+        <h3 class="heading-6"><span class="step num">3</span><span data-i18n="s3Title"></span></h3>
+        <div id="mine" class="mine" hidden></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr class="caption-1"><th data-i18n="thHeir"></th><th data-i18n="thCount"></th><th data-i18n="thEach"></th><th data-i18n="thPct"></th><th data-i18n="thAmt"></th></tr></thead>
+            <tbody id="rows" class="body-5"></tbody>
+          </table>
+        </div>
+        <p id="flagNote" class="alert body-6" hidden></p>
+        <details class="reasons">
+          <summary class="title-4" data-i18n="reasonsToggle"></summary>
+          <ul id="reasons" class="body-6"></ul>
+        </details>
+        <p class="badge caption-4"><i class="ph ph-code" aria-hidden="true"></i><span data-i18n="codeBadge"></span></p>
+      </div>
+
+      <div class="card" id="aiCard" hidden>
+        <h3 class="heading-6"><span class="step num">4</span><span data-i18n="s4Title"></span></h3>
+        <div id="aiLoading" class="skeleton" role="status">
+          <span class="caption-1 muted" data-i18n="aiWriting"></span>
+          <div class="bar"></div><div class="bar"></div><div class="bar short"></div>
+        </div>
+        <div id="aiBody" hidden>
+          <p id="explanation" class="body-3"></p>
+          <h4 class="title-2" data-i18n="stepsTitle"></h4>
+          <ol id="steps" class="body-3"></ol>
+          <h4 class="title-2" data-i18n="draftTitle"></h4>
+          <pre id="draft" class="body-3"></pre>
+          <button id="copyBtn" type="button" class="btn ghost button-md"><i class="ph ph-copy" aria-hidden="true"></i><span id="copyText" data-i18n="copy"></span></button>
+          <p class="badge caption-4"><i class="ph ph-sparkle" aria-hidden="true"></i><span id="aiLabel"></span></p>
         </div>
       </div>
-
-      <div class="grid">
-        <label class="field" id="wivesWrap">بیویاں<input id="wives" type="number" min="0" max="4" value="0" inputmode="numeric"></label>
-        <label class="field check" id="husbandWrap" hidden><input id="husband" type="checkbox"> شوہر زندہ ہے</label>
-        <label class="field">بیٹے<input id="sons" type="number" min="0" value="0" inputmode="numeric"></label>
-        <label class="field">بیٹیاں<input id="daughters" type="number" min="0" value="0" inputmode="numeric"></label>
-        <label class="field">سگے بھائی<input id="brothers" type="number" min="0" value="0" inputmode="numeric"></label>
-        <label class="field">سگی بہنیں<input id="sisters" type="number" min="0" value="0" inputmode="numeric"></label>
-        <label class="field check"><input id="father" type="checkbox"> والد زندہ ہیں</label>
-        <label class="field check"><input id="mother" type="checkbox"> والدہ زندہ ہیں</label>
-      </div>
-
-      <div class="grid two">
-        <label class="field">کل ترکہ، روپے میں (اختیاری)
-          <input id="estate" type="number" min="0" placeholder="4000000" inputmode="numeric">
-        </label>
-        <label class="field">مرحوم سے آپ کا رشتہ
-          <select id="relation">
-            <option value="daughter">بیٹی</option>
-            <option value="wife">بیوی</option>
-            <option value="mother">ماں</option>
-            <option value="sister">بہن</option>
-            <option value="son">بیٹا</option>
-            <option value="husband">شوہر</option>
-            <option value="father">والد</option>
-            <option value="brother">بھائی</option>
-            <option value="other">کوئی اور</option>
-          </select>
-        </label>
-      </div>
-      <p class="hint">ترکہ وہ رقم ہے جو کفن دفن کے خرچ، قرض اور وصیت ادا کرنے کے بعد بچے۔</p>
-
-      <button id="calcBtn" type="button" class="btn big">حصے نکالیں</button>
-      <p id="calcError" class="warn" hidden></p>
     </section>
 
-    <section class="card" id="resultCard" hidden>
-      <h2><span class="num">3</span> نتیجہ</h2>
-      <div id="mine" class="mine" hidden></div>
-      <div class="tablewrap">
-        <table>
-          <thead><tr><th>وارث</th><th>تعداد</th><th>ہر ایک کا حصہ</th><th>فیصد</th><th>رقم (روپے)</th></tr></thead>
-          <tbody id="rows"></tbody>
-        </table>
-      </div>
-      <p id="flagNote" class="note" hidden></p>
-      <details>
-        <summary>ہر حصے کی وجہ دیکھیں</summary>
-        <ul id="reasons"></ul>
-      </details>
-      <p class="badge">یہ اعداد مقررہ قواعد والے کوڈ سے نکلے ہیں، AI سے نہیں۔</p>
+    <!-- Tagline reveal -->
+    <section class="section tagline-wrap">
+      <p id="tagline" class="heading-3 tagline"></p>
     </section>
 
-    <section class="card" id="aiCard" hidden>
-      <h2><span class="num">4</span> آسان وضاحت اور اگلے قدم</h2>
-      <p id="aiStatus" class="status"></p>
-      <div id="aiBody" hidden>
-        <p id="explanation" class="explain"></p>
-        <h3>اگلے قدم</h3>
-        <ol id="steps"></ol>
-        <h3>درخواست کا مسودہ</h3>
-        <pre id="draft"></pre>
-        <button id="copyBtn" type="button" class="btn ghost">مسودہ کاپی کریں</button>
-        <p id="aiLabel" class="badge"></p>
+    <!-- How it works -->
+    <section id="how" class="section">
+      <div class="section-head reveal"><h2 class="heading-3" data-i18n="howTitle"></h2></div>
+      <div class="cards three">
+        <article class="card reveal"><i class="ph ph-chat-text icon" aria-hidden="true"></i><h3 class="title-1" data-i18n="how1T"></h3><p class="body-6 muted" data-i18n="how1D"></p></article>
+        <article class="card reveal"><i class="ph ph-list-checks icon" aria-hidden="true"></i><h3 class="title-1" data-i18n="how2T"></h3><p class="body-6 muted" data-i18n="how2D"></p></article>
+        <article class="card reveal"><i class="ph ph-signpost icon" aria-hidden="true"></i><h3 class="title-1" data-i18n="how3T"></h3><p class="body-6 muted" data-i18n="how3D"></p></article>
       </div>
     </section>
 
-    <footer class="disclaimer">
-      <strong>ضروری نوٹ:</strong>
-      یہ صرف رہنمائی ہے، قانونی فیصلہ یا شرعی فتویٰ نہیں۔ حساب سنی حنفی فقہ کے مطابق اور صرف قریبی ورثا
-      (شوہر یا بیوی، والدین، بیٹے، بیٹیاں، سگے بہن بھائی) کے لیے ہے۔ پوتے پوتیاں، دادا دادی، سوتیلے رشتے،
-      دوسرے فقہی مسالک اور غیر مسلم خاندان اس میں شامل نہیں۔ حتمی فیصلے سے پہلے مستند عالم یا وکیل سے رجوع کریں۔
-      یہ ایپ آپ کا نام یا شناختی کارڈ نمبر نہیں مانگتی اور کوئی معلومات محفوظ نہیں کرتی۔
-    </footer>
+    <!-- Benefits -->
+    <section id="why" class="section">
+      <div class="section-head reveal"><h2 class="heading-3" data-i18n="whyTitle"></h2></div>
+      <div class="cards two">
+        <article class="card reveal"><i class="ph ph-code icon" aria-hidden="true"></i><h3 class="title-1" data-i18n="why1T"></h3><p class="body-6 muted" data-i18n="why1D"></p></article>
+        <article class="card reveal"><i class="ph ph-user-focus icon" aria-hidden="true"></i><h3 class="title-1" data-i18n="why2T"></h3><p class="body-6 muted" data-i18n="why2D"></p></article>
+        <article class="card reveal"><i class="ph ph-footprints icon" aria-hidden="true"></i><h3 class="title-1" data-i18n="why3T"></h3><p class="body-6 muted" data-i18n="why3D"></p></article>
+        <article class="card reveal"><i class="ph ph-lock icon" aria-hidden="true"></i><h3 class="title-1" data-i18n="why4T"></h3><p class="body-6 muted" data-i18n="why4D"></p></article>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="section narrow">
+      <div class="section-head reveal"><h2 class="heading-3" data-i18n="faqTitle"></h2></div>
+      <div class="faq reveal">
+        <details class="card"><summary class="title-3" data-i18n="q1"></summary><p class="body-6 muted" data-i18n="a1"></p></details>
+        <details class="card"><summary class="title-3" data-i18n="q2"></summary><p class="body-6 muted" data-i18n="a2"></p></details>
+        <details class="card"><summary class="title-3" data-i18n="q3"></summary><p class="body-6 muted" data-i18n="a3"></p></details>
+        <details class="card"><summary class="title-3" data-i18n="q4"></summary><p class="body-6 muted" data-i18n="a4"></p></details>
+        <details class="card"><summary class="title-3" data-i18n="q5"></summary><p class="body-6 muted" data-i18n="a5"></p></details>
+        <details class="card"><summary class="title-3" data-i18n="q6"></summary><p class="body-6 muted" data-i18n="a6"></p></details>
+      </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="section final reveal">
+      <h2 class="heading-3" data-i18n="finalTitle"></h2>
+      <p class="body-3 muted" data-i18n="finalSub"></p>
+      <a class="btn button-md" href="#tool"><span data-i18n="heroCta"></span></a>
+    </section>
   </main>
+
+  <footer class="footer">
+    <div class="alert">
+      <p class="title-4" data-i18n="noteTitle"></p>
+      <p class="body-6" data-i18n="note"></p>
+    </div>
+    <p class="caption-2 muted" data-i18n="footPrivacy"></p>
+    <p class="caption-2 muted" data-i18n="footBuilt"></p>
+  </footer>
 
   <script type="module" src="app.js"></script>
 </body>

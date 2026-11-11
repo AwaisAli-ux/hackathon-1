@@ -25,11 +25,19 @@ Read this first, then continue the work. Reply to the user in Roman Urdu (Urdu i
 | `public/calc.js` | Deterministic calculator, exact fractions. Runs in the browser and in tests. |
 | `test/calc.test.js` | 14 worked cases (`npm test`). |
 | `server.js` | Node server, no dependencies. Serves `public/`, proxies Gemini at `/api/parse` and `/api/explain`. |
-| `public/index.html`, `style.css`, `app.js` | Urdu RTL interface: story → form → result → explanation. |
+| `public/index.html`, `style.css`, `app.js` | Landing page plus the tool: hero, 4 step tool, tagline reveal, how it works, benefits, FAQ, final call to action. |
+| `public/i18n.js` | Every interface string in English and Urdu. Add new text here in both languages, never hard code it in HTML. |
 | `.env.example` | Copy to `.env`, set `GEMINI_API_KEY`. |
 | `README.md` | Submission-ready description. |
 
 Run: `npm start`, open http://localhost:3000 in Chrome. Nothing to install.
+
+## Interface rules
+
+- **Two languages:** a nav button switches English (LTR) and Urdu (RTL); the choice is saved in `localStorage` (`ws-lang`, default Urdu). `calculate(input, lang)` returns labels and reasons in that language, and `/api/parse` and `/api/explain` are told which language to write in. Switching language re-renders the result and asks Gemini for the explanation again.
+- **Light and dark mode:** a nav button sets `data-theme` on `<html>`, saved as `ws-theme`; with no saved choice it follows the system setting.
+- **Design:** follows the user's `landing-page-design` skill. Manrope for Latin text, Noto Nastaliq Urdu for Urdu (with taller line heights, the one deliberate departure from the skill's type scale). Sizes on the Tailwind scale via named classes (`heading-1`, `body-3`, `button-md` …), spacing only from the skill's table, flat backgrounds, gradient only on the hero heading text, dark backgrounds only from the skill's list, Phosphor icons, motion on `cubic-bezier(0.22,1,0.36,1)`, no hyphens in copy, no invented statistics or testimonials.
+- Not done from the skill's ship list: custom 404 page, separate privacy and terms pages, mobile menu panel (on small screens the nav hides its links and keeps the two toggles).
 
 ## Calculator rules (Sunni Hanafi, close heirs only)
 
@@ -48,7 +56,7 @@ Out of scope, by design: other schools, non-Muslims, grandchildren, grandparents
 
 Done and verified:
 - Calculator: all 14 tests pass.
-- Interface: checked in the browser; form, result table, "your share" card and the no-AI fallback all work.
+- Interface: checked in the browser in both languages and both themes; story → form → result → explanation works end to end, and so does the no-AI fallback.
 
 - Gemini: tested with a real key. Story → form works on 6 Urdu and Roman Urdu stories, including relation mapping (nana/nani, dadi, chacha, saas) and out-of-scope grandchildren. Explanation, steps and draft come back in Urdu with the calculator's numbers.
 - Gemini models: `server.js` tries `GEMINI_MODEL` (if set), `gemini-3.5-flash`, `gemini-3.7-flash`, `gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, moving on when one errors or takes over 15 seconds. During testing `gemini-3.5-flash` returned 503 (high demand) and `gemini-3.8-flash` / `gemini-flash-latest` hung, so `gemini-3.5-flash-lite` did the work. The 2.5 models are closed to new users.

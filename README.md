@@ -1,6 +1,6 @@
 # Wirasat Saathi — Know Your Share, Claim Your Right
 
-An Urdu-first web app that tells a woman her inheritance share and what to do next.
+An Urdu and English web app that tells a woman her inheritance share and what to do next.
 Built for the Build with Google Hackathon (GDGoC CUI, CUI Tech Fest FA'26).
 
 - **Domain:** Women's Empowerment
@@ -27,7 +27,7 @@ Many women in Pakistan do not receive their rightful inheritance. A major reason
 | Voice input | Browser speech recognition (Urdu, Chrome) |
 | Share calculator | Plain JavaScript, exact fractions, `public/calc.js` |
 | Server | Node.js, no dependencies, `server.js` |
-| Front end | HTML, CSS, JavaScript, Noto Nastaliq Urdu (Google Fonts) |
+| Front end | HTML, CSS, JavaScript; English and Urdu, light and dark mode; Manrope and Noto Nastaliq Urdu (Google Fonts), Phosphor icons |
 
 ## Run it
 

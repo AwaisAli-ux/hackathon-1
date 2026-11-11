@@ -62,7 +62,7 @@ Rules:
 - First fill "working": list every person mentioned, one by one, as "speaker's X = deceased's Y", including the speaker herself. Then fill the other fields from that list.
 - Count the speaker herself or himself among the heirs (for example "main aik beti hoon" means she is one of the daughters). If the speaker's husband died, the speaker is his wife, so wives is at least 1. If the speaker's father died and her mother (ammi, walida) is alive, that mother is the deceased's wife, so wives is at least 1 — she is NOT the deceased's mother.
 - A relative who is the deceased's parent, child, spouse or full sibling is always in scope, whatever the speaker calls them.
-- Write outOfScope in Urdu script.
+- Write outOfScope in the language named on the first line of the input (Urdu means Urdu script).
 - Count only living heirs. If something is not mentioned, use 0, false or null. Never guess.
 - brothers and sisters mean FULL brothers and sisters of the deceased only.
 - estate is the total value in Pakistani rupees as a plain number (1 lakh = 100000, 1 crore = 10000000); null if not given.
@@ -90,12 +90,13 @@ const PARSE_SCHEMA = {
   required: ['working', 'deceasedGender', 'husband', 'wives', 'sons', 'daughters', 'father', 'mother', 'brothers', 'sisters', 'userRelation', 'outOfScope'],
 };
 
-const EXPLAIN_SYSTEM = `You are Wirasat Saathi, a helper that explains an inheritance calculation to a woman in Pakistan in simple, warm, respectful Urdu (Urdu script).
+const EXPLAIN_SYSTEM = `You are Wirasat Saathi, a helper that explains an inheritance calculation to a woman in Pakistan in simple, warm, respectful language.
+Write everything in the language named in "outputLanguage" in the JSON: Urdu means Urdu script, English means plain English.
 You receive JSON with shares that were already calculated by verified code under Sunni Hanafi rules.
 Hard rules:
 - NEVER calculate, change, round or add any share, fraction, percentage or amount. Use only the numbers given in the JSON, exactly as given.
 - Do not give a fatwa or a legal ruling. This is guidance only.
-- Simple everyday Urdu, short sentences, no difficult legal or Arabic terms without a plain explanation.
+- Simple everyday words, short sentences, no difficult legal or Arabic terms without a plain explanation.
 Write:
 - explanation: 4 to 6 sentences addressed to the user. State her own share first (userRelation tells you which row is hers), then briefly why, then who else gets what.
 - steps: 5 short practical next steps for claiming her share. You may draw on these general points, and tell her to confirm details with the relevant office:
@@ -106,7 +107,7 @@ Write:
   * She should not sign any paper giving up her share under pressure.
   * Depriving a woman of her inheritance is an offence under Pakistani law, and a complaint can be made under the women's property rights law to the Ombudsperson.
   * A legal aid organisation or lawyer can help if the family refuses.
-- draft: a short, polite written request in Urdu from her to her family asking for her share, stating her share using the given numbers. Leave blanks like ______ for names and dates.`;
+- draft: a short, polite written request in the output language from her to her family asking for her share, stating her share using the given numbers. Leave blanks like ______ for names and dates.`;
 
 const EXPLAIN_SCHEMA = {
   type: 'OBJECT',
@@ -136,9 +137,10 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     if (req.method === 'POST' && url.pathname === '/api/parse') {
-      const { text } = await readBody(req);
+      const { text, lang } = await readBody(req);
       if (!text || !String(text).trim()) return send(res, 400, { error: 'text is required' });
-      return send(res, 200, await gemini(PARSE_SYSTEM, String(text).slice(0, 4000), PARSE_SCHEMA));
+      const language = lang === 'en' ? 'English' : 'Urdu';
+      return send(res, 200, await gemini(PARSE_SYSTEM, `Language for outOfScope: ${language}\nStory:\n${String(text).slice(0, 4000)}`, PARSE_SCHEMA));
     }
     if (req.method === 'POST' && url.pathname === '/api/explain') {
       const body = await readBody(req);
