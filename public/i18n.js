@@ -100,6 +100,39 @@ export const STR = {
     ],
     fbDraft: (share) => `Dear family,\nAssalam o alaikum.\nMy share in the estate of the late ______ is ${share}. I request that this share be given to me when the estate is divided.\nThank you.\nName: ______\nDate: ______`,
 
+    assetsTitle: 'List assets separately (optional)',
+    assetName: 'House, gold, cash',
+    assetValue: 'Value in rupees',
+    addAsset: 'Add asset',
+    remove: 'Remove',
+    assetsNote: 'When you list assets, the estate total becomes their sum.',
+    assetsShare: 'Your share of each asset',
+    assetN: 'Asset',
+
+    fairTitle: 'Is the offer fair?',
+    fairHint: 'Enter what your family is offering you, in rupees.',
+    fairNeedEstate: 'Enter the total estate in step 2 to compare.',
+    fairLess: (short, pct) => `This is ${short} rupees less than your share. You are being offered ${pct}% of what is yours.`,
+    fairOk: 'This offer covers your full share.',
+
+    treeTitle: 'Family map',
+    treeHint: 'Tap a person to see why they get this share.',
+    deceasedM: 'Deceased',
+    deceasedF: 'Deceased',
+    you: 'You',
+
+    whatsapp: 'Send on WhatsApp',
+    print: 'Print or save as PDF',
+    reportTitle: 'Wirasat Saathi: inheritance share summary',
+
+    askTitle: 'Ask a question',
+    askPh: 'Example: What if my brother refuses?',
+    askBtn: 'Ask',
+    askQs: ['What if my family refuses?', 'Which papers do I need?', 'Can I be asked to give up my share?'],
+    askThinking: 'Thinking…',
+    askFail: 'AI is not available right now. Please try again.',
+    askNote: 'AI answers are general guidance, not legal advice.',
+
     tagline: 'The numbers come from tested code.\nThe words come from AI.\nYour right stays yours.',
 
     howTitle: 'How it works',
@@ -242,6 +275,39 @@ export const STR = {
       'دباؤ میں آ کر اپنے حصے سے دستبرداری کے کسی کاغذ پر دستخط نہ کریں۔ قانونی امداد کا ادارہ یا وکیل مدد کر سکتا ہے۔',
     ],
     fbDraft: (share) => `محترم اہلِ خانہ،\nالسلام علیکم۔\nمرحوم/مرحومہ ______ کے ترکے میں میرا حصہ ${share} بنتا ہے۔ میری گزارش ہے کہ ترکے کی تقسیم میں میرا یہ حصہ مجھے دیا جائے۔\nشکریہ۔\nنام: ______\nتاریخ: ______`,
+
+    assetsTitle: 'اثاثے الگ الگ لکھیں (اختیاری)',
+    assetName: 'گھر، زیور، نقدی',
+    assetValue: 'قیمت روپے میں',
+    addAsset: 'اثاثہ شامل کریں',
+    remove: 'ہٹائیں',
+    assetsNote: 'اثاثے لکھنے پر کل ترکہ ان سب کا مجموعہ بن جاتا ہے۔',
+    assetsShare: 'ہر اثاثے میں آپ کا حصہ',
+    assetN: 'اثاثہ',
+
+    fairTitle: 'کیا پیشکش منصفانہ ہے؟',
+    fairHint: 'لکھیں کہ گھر والے آپ کو کتنے روپے دے رہے ہیں۔',
+    fairNeedEstate: 'موازنے کے لیے قدم 2 میں کل ترکہ لکھیں۔',
+    fairLess: (short, pct) => `یہ آپ کے حصے سے ${short} روپے کم ہے۔ آپ کو آپ کے حق کا صرف ${pct}% دیا جا رہا ہے۔`,
+    fairOk: 'یہ پیشکش آپ کے پورے حصے کے برابر ہے۔',
+
+    treeTitle: 'خاندان کا نقشہ',
+    treeHint: 'کسی فرد کو دبائیں اور دیکھیں کہ یہ حصہ کیوں ملا۔',
+    deceasedM: 'مرحوم',
+    deceasedF: 'مرحومہ',
+    you: 'آپ',
+
+    whatsapp: 'واٹس ایپ پر بھیجیں',
+    print: 'پرنٹ یا PDF محفوظ کریں',
+    reportTitle: 'وراثت ساتھی: وراثتی حصے کا خلاصہ',
+
+    askTitle: 'سوال پوچھیں',
+    askPh: 'مثال: اگر بھائی انکار کرے تو کیا کروں؟',
+    askBtn: 'پوچھیں',
+    askQs: ['اگر گھر والے انکار کریں تو؟', 'کون سے کاغذات چاہییں؟', 'کیا مجھ سے حصہ چھوڑنے کو کہا جا سکتا ہے؟'],
+    askThinking: 'سوچ رہا ہوں…',
+    askFail: 'AI ابھی دستیاب نہیں۔ دوبارہ کوشش کریں۔',
+    askNote: 'AI کے جواب عام رہنمائی ہیں، قانونی مشورہ نہیں۔',
 
     tagline: 'حساب آزمودہ کوڈ کرتا ہے۔\nوضاحت AI کرتا ہے۔\nحق آپ کا ہی رہتا ہے۔',
 

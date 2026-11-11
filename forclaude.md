@@ -39,6 +39,26 @@ Run: `npm start`, open http://localhost:3000 in Chrome. Nothing to install.
 - **Design:** follows the user's `landing-page-design` skill. Manrope for Latin text, Noto Nastaliq Urdu for Urdu (with taller line heights, the one deliberate departure from the skill's type scale). Sizes on the Tailwind scale via named classes (`heading-1`, `body-3`, `button-md` …), spacing only from the skill's table, flat backgrounds, gradient only on the hero heading text, dark backgrounds only from the skill's list, Phosphor icons, motion on `cubic-bezier(0.22,1,0.36,1)`, no hyphens in copy, no invented statistics or testimonials.
 - Not done from the skill's ship list: custom 404 page, separate privacy and terms pages, mobile menu panel (on small screens the nav hides its links and keeps the two toggles).
 
+## Features in the tool
+
+- **Example stories:** three chips fill the story and run AI form filling in one click (best for the demo).
+- **Steppers and live result:** plus and minus on count fields; after the first calculation the result follows the form, and the AI explanation is asked again 2.5 seconds after the last change.
+- **Fairness checker:** the user enters what the family offers; code shows how many rupees short it is and what percent of her right it covers. Needs the estate total.
+- **Assets:** optional list of assets (name and value); the estate becomes their sum and the result shows her share of each asset.
+- **Family map:** parents above, siblings and spouse beside the deceased, children below. Clicking a person shows the reason for that share.
+- **Share bars**, result table and reasons list.
+- **WhatsApp and print:** the draft request opens in WhatsApp through `wa.me`; the print button prints the result and explanation only, on white.
+- **Question chat:** `/api/ask` answers follow up questions from the calculated case, in the current language, with strict limits (no new numbers, no invented contacts, inheritance topics only).
+- All of these except the chat and the AI explanation are plain code and work without internet.
+
+## Gemini quota
+
+The key is on the free tier. During testing `gemini-3.5-flash` hit its quota (HTTP 429), so the lite models are tried first and a failing model is skipped for 90 seconds. If the lite models also run out, link the hackathon billing account (the 5 dollar credit) to the key's Google Cloud project, or make a new key in a project that has billing. Avoid switching language repeatedly during the demo: each switch asks Gemini again.
+
+## Deploying (not done)
+
+`gcloud` and Docker are not installed on the user's laptop; the `firebase` CLI is. A `Dockerfile` is included for Cloud Run. The quickest route: Google Cloud console → Cloud Run → deploy from the GitHub repo using the Dockerfile → add `GEMINI_API_KEY` as an environment variable → allow unauthenticated access. The user must do the console steps and sign in. Do not list Cloud Run or Firebase in the stack unless this is actually done.
+
 ## Calculator rules (Sunni Hanafi, close heirs only)
 
 Heirs covered: husband or up to 4 wives, father, mother, sons, daughters, full brothers, full sisters.
@@ -59,7 +79,7 @@ Done and verified:
 - Interface: checked in the browser in both languages and both themes; story → form → result → explanation works end to end, and so does the no-AI fallback.
 
 - Gemini: tested with a real key. Story → form works on 6 Urdu and Roman Urdu stories, including relation mapping (nana/nani, dadi, chacha, saas) and out-of-scope grandchildren. Explanation, steps and draft come back in Urdu with the calculator's numbers.
-- Gemini models: `server.js` tries `GEMINI_MODEL` (if set), `gemini-3.5-flash`, `gemini-3.7-flash`, `gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, moving on when one errors or takes over 15 seconds. During testing `gemini-3.5-flash` returned 503 (high demand) and `gemini-3.8-flash` / `gemini-flash-latest` hung, so `gemini-3.5-flash-lite` did the work. The 2.5 models are closed to new users.
+- Gemini models: `server.js` tries `GEMINI_MODEL` (if set), `gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, `gemini-3.5-flash`, `gemini-3.7-flash`, moving on when one errors or takes over 12 seconds, with a 28 second total limit. During testing `gemini-3.5-flash` returned 503 (high demand) and `gemini-3.8-flash` / `gemini-flash-latest` hung, so `gemini-3.5-flash-lite` did the work. The 2.5 models are closed to new users.
 - The `.env` file with the key is NOT in the zip or the repo. In a new place, copy `.env.example` to `.env` and add the key. The key was pasted in a chat once, so the user should delete it in AI Studio after the hackathon.
 
 Not verified:

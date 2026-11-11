@@ -17,6 +17,15 @@ Many women in Pakistan do not receive their rightful inheritance. A major reason
 3. **Explanation in simple Urdu.** Gemini explains the result using only the numbers the calculator produced.
 4. **Action plan.** Next steps for claiming the share, and a draft written request.
 
+Also in the tool:
+
+- **Fairness checker:** enter what the family is offering and see how far it falls short of the rightful share.
+- **Family map:** an interactive picture of the family with each heir's share and the reason for it.
+- **Asset split:** list a house, gold or cash separately and see the share of each.
+- **Question chat:** ask follow up questions; Gemini answers from the calculated case.
+- **Share and print:** send the draft request on WhatsApp, or print the result as a report.
+- **English and Urdu, light and dark mode.**
+
 **AI never calculates the shares.** Gemini is used only to understand language and to explain. The numbers come from auditable, tested code.
 
 ## Technology

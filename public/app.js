@@ -28,7 +28,22 @@ function applyLang() {
   if (!SR) $('micBtn').title = t('micUnsupported');
   buildTagline();
   buildExamples();
+  buildAskQs();
   if (last) showResult();
+}
+
+// Suggested questions for the chat under the explanation.
+function buildAskQs() {
+  const box = $('askQs');
+  box.replaceChildren();
+  for (const q of t('askQs')) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip ex button-sm';
+    b.textContent = q;
+    b.addEventListener('click', () => ask(q));
+    box.append(b);
+  }
 }
 
 // Example stories: one click fills the story and asks AI to fill the form.
@@ -203,8 +218,46 @@ function readForm() {
     father: $('father').checked,
     mother: $('mother').checked,
     estate: $('estate').value,
+    assets: assets(),
   };
 }
+
+// ---------- Assets listed one by one (optional) ----------
+function assets() {
+  return [...document.querySelectorAll('.asset-row')]
+    .map((r) => ({ name: r.children[0].value.trim(), value: Number(r.children[1].value) || 0 }))
+    .filter((a) => a.value > 0);
+}
+function syncEstateFromAssets() {
+  const list = assets();
+  $('estate').readOnly = list.length > 0;
+  if (list.length) $('estate').value = list.reduce((s, a) => s + a.value, 0);
+}
+function addAssetRow() {
+  const row = document.createElement('div');
+  row.className = 'asset-row';
+  const name = document.createElement('input');
+  name.type = 'text'; name.className = 'body-3'; name.maxLength = 40;
+  name.dataset.i18nPh = 'assetName'; name.placeholder = t('assetName');
+  const value = document.createElement('input');
+  value.type = 'number'; value.min = '0'; value.className = 'num'; value.inputMode = 'numeric';
+  value.dataset.i18nPh = 'assetValue'; value.placeholder = t('assetValue');
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.dataset.i18nAria = 'remove'; del.setAttribute('aria-label', t('remove')); del.title = t('remove');
+  const x = document.createElement('i'); x.className = 'ph ph-x';
+  del.append(x);
+  del.addEventListener('click', () => {
+    row.remove();
+    syncEstateFromAssets();
+    $('estate').dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  row.append(name, value, del);
+  $('assetRows').append(row);
+  name.focus();
+}
+$('addAsset').addEventListener('click', addAssetRow);
+$('assetRows').addEventListener('input', syncEstateFromAssets);
 
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 
@@ -249,6 +302,73 @@ $('calcBtn').closest('.card').addEventListener('input', () => {
   showResult(true);
 });
 
+// ---------- Fairness checker: compare the family's offer with the rightful share ----------
+let lastMine = null;
+function renderFair() {
+  const out = $('fairOut');
+  const raw = $('offer').value;
+  if (!lastMine || raw === '') { out.hidden = true; return; }
+  const offer = Math.max(0, Number(raw) || 0);
+  let cls = 'info', text = t('fairNeedEstate');
+  if (lastMine.amountEach != null) {
+    if (offer >= lastMine.amountEach) { cls = 'ok'; text = t('fairOk'); }
+    else {
+      cls = 'bad';
+      text = STR[lang].fairLess(money(lastMine.amountEach - offer), Math.round((offer / lastMine.amountEach) * 1000) / 10);
+    }
+  }
+  out.className = `fair-out body-3 ${cls}`;
+  out.textContent = text;
+  out.hidden = false;
+}
+$('offer').addEventListener('input', renderFair);
+
+// ---------- Family map: parents above, spouse and siblings beside, children below ----------
+function renderTree(result, mineKey) {
+  const tree = $('tree');
+  tree.replaceChildren();
+  $('treeReason').textContent = t('treeHint');
+  const by = Object.fromEntries(result.rows.map((r) => [r.key, r]));
+  const node = (r) => {
+    const b = el('button', 'node');
+    b.type = 'button';
+    if (r.key === mineKey) b.classList.add('me');
+    if (r.blocked || r.each.n === 0) b.classList.add('none');
+    b.append(el('i', 'ph ph-user'), el('span', 'node-name body-5', r.count > 1 ? `${r.label} × ${r.count}` : r.label), el('span', 'node-share num caption-3', fstr(r.each)));
+    if (r.key === mineKey) b.append(el('span', 'node-you caption-3', t('you')));
+    b.addEventListener('click', () => {
+      tree.querySelectorAll('.node').forEach((n) => n.classList.remove('sel'));
+      b.classList.add('sel');
+      $('treeReason').textContent = `${r.label}: ${r.reason}`;
+    });
+    return b;
+  };
+  const rowOf = (keys) => {
+    const d = el('div', 'tree-row');
+    for (const k of keys) if (by[k]) d.append(node(by[k]));
+    return d;
+  };
+  const dead = el('div', 'node dead');
+  dead.append(el('i', 'ph ph-user-circle'), el('span', 'node-name body-5', t(result.input.deceasedGender === 'female' ? 'deceasedF' : 'deceasedM')));
+  const top = rowOf(['father', 'mother']);
+  const mid = el('div', 'tree-row');
+  for (const k of ['brothers', 'sisters']) if (by[k]) mid.append(node(by[k]));
+  mid.append(dead);
+  for (const k of ['husband', 'wives']) if (by[k]) mid.append(node(by[k]));
+  const bottom = rowOf(['sons', 'daughters']);
+  if (top.children.length) tree.append(top, el('div', 'tree-line'));
+  tree.append(mid);
+  if (bottom.children.length) tree.append(el('div', 'tree-line'), bottom);
+  // People arrive one after another.
+  tree.querySelectorAll('.node').forEach((n, i) => {
+    n.style.transitionDelay = `${Math.min(i * 60, 400)}ms`;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      n.classList.add('in');
+      setTimeout(() => { n.style.transitionDelay = ''; }, 1000);
+    }));
+  });
+}
+
 let explainTimer = null;
 function showResult(live = false) {
   const result = calculate(last.input, lang);
@@ -276,6 +396,25 @@ function showResult(live = false) {
     }
   }
   mine.hidden = !mineRow;
+  const hasShare = !!mineRow && !mineRow.blocked && mineRow.each.n > 0;
+  lastMine = hasShare ? mineRow : null;
+
+  // Your share of each listed asset
+  const list = last.input.assets || [];
+  $('assetShares').hidden = !(hasShare && list.length);
+  $('assetList').replaceChildren();
+  if (hasShare) {
+    list.forEach((a, i) => {
+      const li = el('li');
+      li.append(el('span', '', a.name || `${t('assetN')} ${i + 1}`),
+        el('span', 'num', `${money(Math.round((a.value * mineRow.each.n) / mineRow.each.d))}`));
+      $('assetList').append(li);
+    });
+  }
+
+  $('fairBox').hidden = !hasShare;
+  renderFair();
+  renderTree(result, mineKey);
 
   // Animated bars: one per heir group, reused between updates so they glide to the new size.
   const bars = $('bars');
@@ -334,7 +473,7 @@ function showResult(live = false) {
     $('aiCard').hidden = false;
     $('aiBody').hidden = true;
     $('aiLoading').hidden = false;
-    explainTimer = setTimeout(() => explain(result, relation, mineRow), 1200);
+    explainTimer = setTimeout(() => explain(result, relation, mineRow), 2500);
   } else {
     explain(result, relation, mineRow);
   }
@@ -360,6 +499,8 @@ async function explain(result, relation, mineRow) {
     })),
     unallocatedShare: result.unallocated.n > 0 ? fstr(result.unallocated) : null,
   };
+  lastPayload = payload;
+  $('chat').replaceChildren();
   let out, fromAI = true;
   try {
     out = await post('/api/explain', payload);
@@ -391,6 +532,43 @@ $('copyBtn').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('draft').textContent); } catch { key = 'copyFail'; }
   $('copyText').textContent = t(key);
   setTimeout(() => { $('copyText').textContent = t('copy'); }, 1500);
+});
+
+// ---------- Share and print ----------
+$('waBtn').addEventListener('click', () => {
+  window.open('https://wa.me/?text=' + encodeURIComponent($('draft').textContent), '_blank', 'noopener');
+});
+$('printBtn').addEventListener('click', () => window.print());
+
+// ---------- Follow up questions, answered by Gemini from the calculated case ----------
+let lastPayload = null;
+let asking = false;
+async function ask(question) {
+  question = String(question || '').trim();
+  if (!question || asking || !lastPayload) return;
+  asking = true;
+  $('askBtn').disabled = true;
+  const chat = $('chat');
+  chat.append(el('div', 'bubble q body-3', question));
+  const wait = el('div', 'bubble a wait body-3', t('askThinking'));
+  chat.append(wait);
+  wait.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  try {
+    const out = await post('/api/ask', { question, outputLanguage: lang === 'ur' ? 'Urdu' : 'English', case: lastPayload });
+    wait.textContent = out.answer;
+  } catch (err) {
+    console.error(err);
+    wait.textContent = t('askFail');
+  }
+  wait.classList.remove('wait');
+  asking = false;
+  $('askBtn').disabled = false;
+}
+$('askForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = $('askInput').value;
+  $('askInput').value = '';
+  ask(q);
 });
 
 applyLang();

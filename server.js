@@ -20,13 +20,17 @@ if (existsSync(envFile)) {
 
 const PORT = Number(process.env.PORT) || 3000;
 // Tried in order; a model that errors or is too slow is skipped for the next one.
-const MODELS = [process.env.GEMINI_MODEL, 'gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'].filter(Boolean);
+// The lite models go first: they answer in a few seconds and have the roomiest free quota.
+const MODELS = [process.env.GEMINI_MODEL, 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.5-flash', 'gemini-3.7-flash'].filter(Boolean);
 let workingModel = null;
+const coolUntil = new Map(); // model -> time before which we skip it after a failure
 
 async function gemini(system, user, schema) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY is not set');
-  const order = workingModel ? [workingModel, ...MODELS.filter((m) => m !== workingModel)] : MODELS;
+  const all = workingModel ? [workingModel, ...MODELS.filter((m) => m !== workingModel)] : MODELS;
+  const fresh = all.filter((m) => (coolUntil.get(m) || 0) < Date.now());
+  const order = fresh.length ? fresh : all;
   let lastErr;
   const deadline = Date.now() + 28000; // never keep the user waiting longer than this in total
   for (const model of order) {
@@ -40,7 +44,7 @@ async function gemini(system, user, schema) {
           contents: [{ role: 'user', parts: [{ text: user }] }],
           generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: schema },
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(12000),
       });
       if (!res.ok) throw new Error(`Gemini ${res.status} (${model}): ${(await res.text()).slice(0, 300)}`);
       const data = await res.json();
@@ -53,6 +57,7 @@ async function gemini(system, user, schema) {
       lastErr = err;
       if (workingModel === model) workingModel = null;
       if (err.message === 'fetch failed') break; // no internet: other models will fail too
+      coolUntil.set(model, Date.now() + 90000); // quota, overload or timeout: leave it alone for a while
     }
   }
   throw lastErr;
@@ -122,6 +127,24 @@ const EXPLAIN_SCHEMA = {
   required: ['explanation', 'steps', 'draft'],
 };
 
+const ASK_SYSTEM = `You are Wirasat Saathi. A woman in Pakistan has just seen her inheritance share, which verified code calculated under Sunni Hanafi rules. The JSON gives her question, the calculated case, and outputLanguage.
+Answer her question in the output language (Urdu means Urdu script), in 3 to 5 short sentences and plain everyday words.
+Hard rules:
+- Use only the shares and amounts in the case. NEVER calculate, change or add a share, fraction, percentage or amount.
+- Give general practical guidance only. This is not a fatwa and not legal advice; for any decision tell her to confirm with a scholar, a lawyer or the relevant office.
+- Never invent phone numbers, addresses, office names, fees, deadlines or section numbers of laws.
+- If the question is not about inheritance or her situation, say politely that you can only help with inheritance questions.
+General points you may draw on:
+  * Funeral costs, debts and any valid will (up to one third) are settled before the estate is divided.
+  * She needs the death certificate and the family registration record of the heirs.
+  * A succession certificate or letter of administration can be applied for through a NADRA Succession Facilitation Unit where available, or through the civil court.
+  * For land, the inheritance mutation is entered at the land revenue office.
+  * She cannot be forced to give up her share, and she should not sign any paper giving it up under pressure.
+  * Depriving a woman of her inheritance is an offence under Pakistani law, and a complaint can be made under the women's property rights law to the Ombudsperson.
+  * A legal aid organisation or lawyer can help if the family refuses.`;
+
+const ASK_SCHEMA = { type: 'OBJECT', properties: { answer: { type: 'STRING' } }, required: ['answer'] };
+
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
 const send = (res, status, body) => {
@@ -148,6 +171,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/explain') {
       const body = await readBody(req);
       return send(res, 200, await gemini(EXPLAIN_SYSTEM, JSON.stringify(body).slice(0, 8000), EXPLAIN_SCHEMA));
+    }
+    if (req.method === 'POST' && url.pathname === '/api/ask') {
+      const body = await readBody(req);
+      const question = String(body.question || '').trim().slice(0, 300);
+      if (!question) return send(res, 400, { error: 'question is required' });
+      const user = JSON.stringify({ question, outputLanguage: body.outputLanguage === 'English' ? 'English' : 'Urdu', case: body.case }).slice(0, 8000);
+      return send(res, 200, await gemini(ASK_SYSTEM, user, ASK_SCHEMA));
     }
     if (req.method === 'GET' && url.pathname === '/api/health') {
       return send(res, 200, { ok: true, ai: !!process.env.GEMINI_API_KEY, model: workingModel });

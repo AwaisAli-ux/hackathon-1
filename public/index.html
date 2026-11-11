@@ -114,13 +114,38 @@
         </div>
         <p class="caption-2 muted" data-i18n="estateHint"></p>
 
+        <details class="assets">
+          <summary class="title-4" data-i18n="assetsTitle"></summary>
+          <div id="assetRows" class="asset-rows"></div>
+          <button id="addAsset" type="button" class="btn ghost button-sm"><i class="ph ph-plus" aria-hidden="true"></i><span data-i18n="addAsset"></span></button>
+          <p class="caption-2 muted" data-i18n="assetsNote"></p>
+        </details>
+
         <button id="calcBtn" type="button" class="btn wide button-lg"><i class="ph ph-calculator" aria-hidden="true"></i><span data-i18n="calc"></span></button>
         <p id="calcError" class="alert body-6" role="alert" hidden></p>
       </div>
 
       <div class="card" id="resultCard" hidden>
         <h3 class="heading-6"><span class="step num">3</span><span data-i18n="s3Title"></span></h3>
+        <p class="print-only heading-6" data-i18n="reportTitle"></p>
         <div id="mine" class="mine" hidden></div>
+
+        <div id="assetShares" class="asset-shares" hidden>
+          <p class="title-4 muted" data-i18n="assetsShare"></p>
+          <ul id="assetList" class="body-5"></ul>
+        </div>
+
+        <div id="fairBox" class="fair">
+          <label class="field title-4"><span data-i18n="fairTitle"></span><span class="caption-2 muted" data-i18n="fairHint"></span>
+            <input id="offer" class="num" type="number" min="0" inputmode="numeric" placeholder="0">
+          </label>
+          <p id="fairOut" class="fair-out body-3" role="status" hidden></p>
+        </div>
+
+        <p class="title-4 muted" data-i18n="treeTitle"></p>
+        <div id="tree" class="tree"></div>
+        <p id="treeReason" class="tree-reason body-6"></p>
+
         <p class="title-4 muted" data-i18n="barsTitle"></p>
         <div id="bars" class="bars"></div>
         <div class="tablewrap">
@@ -149,8 +174,23 @@
           <ol id="steps" class="body-3"></ol>
           <h4 class="title-2" data-i18n="draftTitle"></h4>
           <pre id="draft" class="body-3"></pre>
-          <button id="copyBtn" type="button" class="btn ghost button-md"><i class="ph ph-copy" aria-hidden="true"></i><span id="copyText" data-i18n="copy"></span></button>
+          <div class="row actions">
+            <button id="copyBtn" type="button" class="btn ghost button-md"><i class="ph ph-copy" aria-hidden="true"></i><span id="copyText" data-i18n="copy"></span></button>
+            <button id="waBtn" type="button" class="btn ghost button-md"><i class="ph ph-whatsapp-logo" aria-hidden="true"></i><span data-i18n="whatsapp"></span></button>
+            <button id="printBtn" type="button" class="btn ghost button-md"><i class="ph ph-printer" aria-hidden="true"></i><span data-i18n="print"></span></button>
+          </div>
           <p class="badge caption-4"><i class="ph ph-sparkle" aria-hidden="true"></i><span id="aiLabel"></span></p>
+
+          <div class="ask">
+            <h4 class="title-2" data-i18n="askTitle"></h4>
+            <div id="askQs" class="row"></div>
+            <div id="chat" class="chat" aria-live="polite"></div>
+            <form id="askForm" class="row">
+              <input id="askInput" type="text" class="body-3" maxlength="300" data-i18n-ph="askPh">
+              <button id="askBtn" type="submit" class="btn button-md"><i class="ph ph-paper-plane-tilt" aria-hidden="true"></i><span data-i18n="askBtn"></span></button>
+            </form>
+            <p class="caption-2 muted" data-i18n="askNote"></p>
+          </div>
         </div>
       </div>
     </section>
