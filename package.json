@@ -1,0 +1,14 @@
+{
+  "name": "wirasat-saathi",
+  "version": "0.1.0",
+  "description": "Wirasat Saathi — know your inheritance share, claim your right.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

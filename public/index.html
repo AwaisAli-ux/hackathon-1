@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ur" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>وراثت ساتھی — Wirasat Saathi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <h1>وراثت ساتھی</h1>
+    <p class="tag">اپنا حصہ جانیں، اپنا حق لیں</p>
+    <p class="sub">حساب کوڈ کرتا ہے، وضاحت AI کرتا ہے</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2><span class="num">1</span> اپنی صورتحال بتائیں</h2>
+      <p class="hint">بول کر یا لکھ کر بتائیں کہ کس کا انتقال ہوا اور خاندان میں کون کون ہے۔</p>
+      <textarea id="story" rows="3" placeholder="مثال: میرے والد کا انتقال ہو گیا ہے۔ میری والدہ، دو بھائی اور میں ایک بیٹی ہوں۔ جائیداد چالیس لاکھ کی ہے۔"></textarea>
+      <div class="row">
+        <button id="micBtn" type="button" class="btn ghost">🎤 بولیں</button>
+        <button id="parseBtn" type="button" class="btn">فارم خود بھریں</button>
+        <span id="parseStatus" class="status"></span>
+      </div>
+      <p id="scopeNote" class="warn" hidden></p>
+    </section>
+
+    <section class="card">
+      <h2><span class="num">2</span> خاندان کی تفصیل دیکھ لیں</h2>
+      <p class="hint">صرف وہ رشتہ دار لکھیں جو زندہ ہیں۔ آپ یہ فارم خود بھی بھر سکتی ہیں۔</p>
+
+      <div class="field">
+        <label>جن کا انتقال ہوا</label>
+        <div class="seg">
+          <label><input type="radio" name="gender" value="male" checked> مرد</label>
+          <label><input type="radio" name="gender" value="female"> عورت</label>
+        </div>
+      </div>
+
+      <div class="grid">
+        <label class="field" id="wivesWrap">بیویاں<input id="wives" type="number" min="0" max="4" value="0" inputmode="numeric"></label>
+        <label class="field check" id="husbandWrap" hidden><input id="husband" type="checkbox"> شوہر زندہ ہے</label>
+        <label class="field">بیٹے<input id="sons" type="number" min="0" value="0" inputmode="numeric"></label>
+        <label class="field">بیٹیاں<input id="daughters" type="number" min="0" value="0" inputmode="numeric"></label>
+        <label class="field">سگے بھائی<input id="brothers" type="number" min="0" value="0" inputmode="numeric"></label>
+        <label class="field">سگی بہنیں<input id="sisters" type="number" min="0" value="0" inputmode="numeric"></label>
+        <label class="field check"><input id="father" type="checkbox"> والد زندہ ہیں</label>
+        <label class="field check"><input id="mother" type="checkbox"> والدہ زندہ ہیں</label>
+      </div>
+
+      <div class="grid two">
+        <label class="field">کل ترکہ، روپے میں (اختیاری)
+          <input id="estate" type="number" min="0" placeholder="4000000" inputmode="numeric">
+        </label>
+        <label class="field">مرحوم سے آپ کا رشتہ
+          <select id="relation">
+            <option value="daughter">بیٹی</option>
+            <option value="wife">بیوی</option>
+            <option value="mother">ماں</option>
+            <option value="sister">بہن</option>
+            <option value="son">بیٹا</option>
+            <option value="husband">شوہر</option>
+            <option value="father">والد</option>
+            <option value="brother">بھائی</option>
+            <option value="other">کوئی اور</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint">ترکہ وہ رقم ہے جو کفن دفن کے خرچ، قرض اور وصیت ادا کرنے کے بعد بچے۔</p>
+
+      <button id="calcBtn" type="button" class="btn big">حصے نکالیں</button>
+      <p id="calcError" class="warn" hidden></p>
+    </section>
+
+    <section class="card" id="resultCard" hidden>
+      <h2><span class="num">3</span> نتیجہ</h2>
+      <div id="mine" class="mine" hidden></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>وارث</th><th>تعداد</th><th>ہر ایک کا حصہ</th><th>فیصد</th><th>رقم (روپے)</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p id="flagNote" class="note" hidden></p>
+      <details>
+        <summary>ہر حصے کی وجہ دیکھیں</summary>
+        <ul id="reasons"></ul>
+      </details>
+      <p class="badge">یہ اعداد مقررہ قواعد والے کوڈ سے نکلے ہیں، AI سے نہیں۔</p>
+    </section>
+
+    <section class="card" id="aiCard" hidden>
+      <h2><span class="num">4</span> آسان وضاحت اور اگلے قدم</h2>
+      <p id="aiStatus" class="status"></p>
+      <div id="aiBody" hidden>
+        <p id="explanation" class="explain"></p>
+        <h3>اگلے قدم</h3>
+        <ol id="steps"></ol>
+        <h3>درخواست کا مسودہ</h3>
+        <pre id="draft"></pre>
+        <button id="copyBtn" type="button" class="btn ghost">مسودہ کاپی کریں</button>
+        <p id="aiLabel" class="badge"></p>
+      </div>
+    </section>
+
+    <footer class="disclaimer">
+      <strong>ضروری نوٹ:</strong>
+      یہ صرف رہنمائی ہے، قانونی فیصلہ یا شرعی فتویٰ نہیں۔ حساب سنی حنفی فقہ کے مطابق اور صرف قریبی ورثا
+      (شوہر یا بیوی، والدین، بیٹے، بیٹیاں، سگے بہن بھائی) کے لیے ہے۔ پوتے پوتیاں، دادا دادی، سوتیلے رشتے،
+      دوسرے فقہی مسالک اور غیر مسلم خاندان اس میں شامل نہیں۔ حتمی فیصلے سے پہلے مستند عالم یا وکیل سے رجوع کریں۔
+      یہ ایپ آپ کا نام یا شناختی کارڈ نمبر نہیں مانگتی اور کوئی معلومات محفوظ نہیں کرتی۔
+    </footer>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
